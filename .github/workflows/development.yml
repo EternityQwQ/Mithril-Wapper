@@ -75,7 +75,7 @@ jobs:
       - name: Get gl4es latest commit hash
         id: gl4es-sha
         run: |
-          echo "sha=$(git ls-remote https://github.com/AngleAuraMC/gl4es-114-extra refs/heads/master | grep -io '^\S*')" >> $GITHUB_OUTPUT
+          echo "sha=$(git ls-remote https://github.com/AngelAuraMC/HolyGL4ES refs/heads/master | grep -io '^\S*')" >> $GITHUB_OUTPUT
 
       - name: Cache gl4es
         uses: actions/cache@v4
