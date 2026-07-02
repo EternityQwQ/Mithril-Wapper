@@ -118,13 +118,48 @@ jobs:
       - name: Download MobileGlues prebuilt artifact
         id: download-mg
         env:
-          GH_TOKEN: ${{ github.token }}
+          # 优先使用 PAT 以支持跨仓库访问；未配置时回退到默认 GITHUB_TOKEN（仅对公开仓库可能可用）
+          GH_TOKEN: ${{ secrets.MG_DOWNLOAD_TOKEN || github.token }}
         run: |
           set -e
           mkdir -p mobileglues-artifact
           cd mobileglues-artifact
-          # Download MobileGlues artifact (workflow_run id: 22014226012)
-          gh run download 22014226012 --repo MobileGL-Dev/MobileGlues --name MobileGlues-iOS-dylib --dir .
+
+          # 动态查询 MobileGL-Dev/MobileGlues 最近成功的 workflow run，避免硬编码
+          # run ID（artifact 90 天后会过期，硬编码 ID 注定会失效）。
+          echo "Fetching recent successful workflow runs from MobileGL-Dev/MobileGlues..."
+          RUN_IDS=$(gh run list \
+            --repo MobileGL-Dev/MobileGlues \
+            --status success \
+            --limit 20 \
+            --json databaseId \
+            --jq '.[].databaseId')
+
+          if [ -z "$RUN_IDS" ]; then
+            echo "::error::No successful workflow runs found in MobileGL-Dev/MobileGlues"
+            exit 1
+          fi
+
+          # 逐个尝试，直到找到仍保留 MobileGlues-iOS-dylib artifact 的 run
+          DOWNLOADED=0
+          for ID in $RUN_IDS; do
+            echo "Trying to download 'MobileGlues-iOS-dylib' from run $ID..."
+            if gh run download "$ID" \
+              --repo MobileGL-Dev/MobileGlues \
+              --name MobileGlues-iOS-dylib \
+              --dir . ; then
+              DOWNLOADED=1
+              echo "downloaded_from_run=$ID" >> $GITHUB_OUTPUT
+              break
+            fi
+            echo "Artifact not available in run $ID, trying next..."
+          done
+
+          if [ "$DOWNLOADED" -ne 1 ]; then
+            echo "::error::Failed to download MobileGlues-iOS-dylib from any recent successful run."
+            exit 1
+          fi
+
           ls -la
           echo "Artifact downloaded successfully"
 
