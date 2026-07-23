@@ -60,10 +60,11 @@ Metal 后端只使用 Metal 1/2 时代的基础 API（`MTLDevice` /
 mesh shader、counter sampling 等新特性**，因此 A11 / Metal 2 设备在
 iOS 14+ 上可完整运行 Minecraft Java Edition 的现代渲染管线。
 
-> ⚠️ 低于 Metal 2 的设备（A7 / A8 / A8X / A9 / A10）不受支持：A7–A8 仅支持
+> [!WARNING]
+>  **低于 Metal 2 的设备（A7 / A8 / A8X / A9 / A10）不受支持：A7–A8 仅支持
 > Metal 1.x，A9–A10 虽然能跑 Metal 2 但缺少本实现依赖的若干
 > `MTLPixelFormatDepth32Float_Stencil8` 性能优化路径。最低起步即
-> **iPhone 8 / iPhone X（A11, Metal 2, iOS 14）**。
+> iPhone 8 / iPhone X（A11, Metal 2, iOS 14）**。
 
 ## 目录结构
 
