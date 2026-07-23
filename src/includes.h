@@ -7,9 +7,15 @@
 
 #include "log.h"
 #include "state.h"
+#include "framebuffer.h"
 #include "metal/metal_context.h"
 #include "metal/metal_objects.h"
 #include "metal/metal_pipeline.h"
+
+// Bring the global GL state pointer into the global namespace so that
+// `extern "C"` GL entry points (which live in the global namespace) can refer
+// to it as `g_state` without a `mithril::` qualifier.
+using mithril::g_state;
 
 #ifdef __cplusplus
 extern "C" {

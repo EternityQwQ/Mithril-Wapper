@@ -2,6 +2,48 @@
 // GL state getters: glGet*v, glGetString / glGetStringi, glGetError.
 #include "includes.h"
 
+/* ---- Strings ---- */
+static const char* kVendor   = "Mithril-Wapper Project";
+static const char* kRenderer = "Mithril-Wapper (Metal backend)";
+static const char* kVersion  = "4.6.0 Mithril-Wapper 1.0 (Metal)";
+static const char* kShadingLangVer = "4.60";
+
+// Sparse extensions list — applications usually only need the count and the
+// GL_ARB_* strings they probe for. Adding the common MC-relevant ones.
+// Defined before glGetIntegerv so the GL_NUM_EXTENSIONS case can size it.
+static const char* kExtensions[] = {
+    "GL_ARB_vertex_buffer_object",
+    "GL_ARB_vertex_array_object",
+    "GL_ARB_framebuffer_object",
+    "GL_ARB_shader_objects",
+    "GL_ARB_vertex_shader",
+    "GL_ARB_fragment_shader",
+    "GL_ARB_geometry_shader4",
+    "GL_ARB_tessellation_shader",
+    "GL_ARB_compute_shader",
+    "GL_ARB_uniform_buffer_object",
+    "GL_ARB_shader_storage_buffer_object",
+    "GL_ARB_multi_draw_indirect",
+    "GL_ARB_draw_indirect",
+    "GL_ARB_draw_elements_base_vertex",
+    "GL_ARB_instanced_arrays",
+    "GL_ARB_texture_multisample",
+    "GL_ARB_texture_buffer_object",
+    "GL_ARB_texture_cube_map_array",
+    "GL_ARB_texture_rg",
+    "GL_ARB_texture_float",
+    "GL_ARB_depth_buffer_float",
+    "GL_ARB_depth_texture",
+    "GL_ARB_depth_clamp",
+    "GL_ARB_seamless_cube_map",
+    "GL_ARB_seamless_cubemap_per_texture",
+    "GL_ARB_sync",
+    "GL_ARB_internalformat_query",
+    "GL_ARB_internalformat_query2",
+    "GL_ARB_robustness",
+    "GL_KHR_debug",
+};
+
 extern "C" {
 
 GLenum glGetError(void) {
@@ -161,47 +203,6 @@ void glGetIntegeri_v(GLenum pname, GLuint index, GLint* params) {
     (void)pname; (void)index;
     if (params) *params = 0;
 }
-
-/* ---- Strings ---- */
-static const char* kVendor   = "Mithril-Wapper Project";
-static const char* kRenderer = "Mithril-Wapper (Metal backend)";
-static const char* kVersion  = "4.6.0 Mithril-Wapper 1.0 (Metal)";
-static const char* kShadingLangVer = "4.60";
-
-// Sparse extensions list — applications usually only need the count and the
-// GL_ARB_* strings they probe for. Adding the common MC-relevant ones.
-static const char* kExtensions[] = {
-    "GL_ARB_vertex_buffer_object",
-    "GL_ARB_vertex_array_object",
-    "GL_ARB_framebuffer_object",
-    "GL_ARB_shader_objects",
-    "GL_ARB_vertex_shader",
-    "GL_ARB_fragment_shader",
-    "GL_ARB_geometry_shader4",
-    "GL_ARB_tessellation_shader",
-    "GL_ARB_compute_shader",
-    "GL_ARB_uniform_buffer_object",
-    "GL_ARB_shader_storage_buffer_object",
-    "GL_ARB_multi_draw_indirect",
-    "GL_ARB_draw_indirect",
-    "GL_ARB_draw_elements_base_vertex",
-    "GL_ARB_instanced_arrays",
-    "GL_ARB_texture_multisample",
-    "GL_ARB_texture_buffer_object",
-    "GL_ARB_texture_cube_map_array",
-    "GL_ARB_texture_rg",
-    "GL_ARB_texture_float",
-    "GL_ARB_depth_buffer_float",
-    "GL_ARB_depth_texture",
-    "GL_ARB_depth_clamp",
-    "GL_ARB_seamless_cube_map",
-    "GL_ARB_seamless_cubemap_per_texture",
-    "GL_ARB_sync",
-    "GL_ARB_internalformat_query",
-    "GL_ARB_internalformat_query2",
-    "GL_ARB_robustness",
-    "GL_KHR_debug",
-};
 
 const GLubyte* glGetString(GLenum name) {
     MITHRIL_ENSURE_INIT();
