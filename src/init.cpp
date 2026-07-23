@@ -20,7 +20,7 @@ void proc_init(void) {
     ::mithril::state_init();
     metal_init();
 
-    ::mithril::MITHRIL_LOG_INFO("init", "Mithril-Wapper initialised (Metal backend)");
+    MITHRIL_LOG_INFO("init", "Mithril-Wapper initialised (Metal backend)");
 }
 
 } // extern "C"
