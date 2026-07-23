@@ -153,7 +153,7 @@ cmake --build build-ios -j
 ## 与 Amethyst-iOS 集成
 
 本仓库的 EGL 实现专门用于修复
-[Amethyst-iOS](https://github.com/EternityQwQ/Amethyst-iOS) 在 LTW /
+[Amethyst-iOS](https://github.com/EternityQwQ/Amethyst-iOS) 在
 Mithril 渲染器下 `eglCreateContext` dlsym 失败导致的 SIGSEGV。集成步骤：
 
 1. 把 CI 产物 `libmithril.dylib` 放到 Amethyst 应用的 `Frameworks/` 目录。
