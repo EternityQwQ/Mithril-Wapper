@@ -269,7 +269,18 @@ EGLint config_get_attr(const EglConfig* cfg, EGLint attr) {
 
 // ===========================================================================
 // Public EGL entry points (extern "C", exported by libmithril.dylib)
+//
+// Force default visibility at the source level regardless of the toolchain's
+// global visibility policy. leetal/ios-cmake compiles .mm files as OBJCXX with
+// -fvisibility=hidden by default; without this pragma the egl* entry points
+// would be hidden, never enter the dylib's export table, and host launchers
+// (Amethyst-iOS' egl_bridge.m) would see:
+//     dlsym(handle, "eglCreateContext"): symbol not found
+// followed by a NULL-pointer SIGSEGV in gl_make_current when the unresolved
+// pointer is later called. The pragma below overrides hidden visibility so
+// every egl* in this block is exported and dlsym-resolvable.
 // ===========================================================================
+#pragma GCC visibility push(default)
 extern "C" {
 
 EGLDisplay eglGetDisplay(EGLNativeDisplayType display_id) {
@@ -743,3 +754,4 @@ EGLBoolean eglWaitGL(void)      { metal_commit(); return EGL_TRUE; }
 EGLBoolean eglWaitNative(EGLint) { return EGL_TRUE; }
 
 } // extern "C"
+#pragma GCC visibility pop

@@ -13,12 +13,22 @@ if(APPLE)
     set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
 endif()
 
-# GL symbols must be exported (the dylib is a drop-in OpenGL replacement)
+# GL symbols must be exported (the dylib is a drop-in OpenGL replacement).
+# IMPORTANT: .mm files (EGL-on-Metal, Metal backend) are compiled as OBJCXX;
+# leetal/ios-cmake defaults OBJCXX to -fvisibility=hidden, which would hide the
+# egl* entry points and make host dlsym("eglCreateContext") fail. Mirror the
+# CXX visibility on OBJCXX so egl.mm's extern "C" functions are exported. (The
+# egl.mm translation unit also guards itself with #pragma GCC visibility
+# push(default); both layers are intentional belt-and-suspenders.)
 set(CMAKE_CXX_VISIBILITY_PRESET default)
 set(CMAKE_C_VISIBILITY_PRESET default)
+set(CMAKE_OBJCXX_VISIBILITY_PRESET default)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN OFF)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fvisibility=default")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fvisibility=default")
+if(APPLE)
+    set(CMAKE_OBJCXX_FLAGS "${CMAKE_OBJCXX_FLAGS} -fvisibility=default")
+endif()
 
 # ---------------------------------------------------------------------------
 # glslang: GLSL front-end -> SPIR-V  (submodule under 3rdparty/, mirrors the

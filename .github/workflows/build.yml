@@ -49,6 +49,35 @@ jobs:
           ls -l "$DYLIB"
           file "$DYLIB"
 
+      - name: Verify exported EGL/GL symbols
+        run: |
+          DYLIB="${{ steps.locate.outputs.path }}"
+          echo "=== Exported egl* symbols ==="
+          nm -gU "$DYLIB" | grep -Ei ' [Tt] _?egl' | head -40
+          echo "=== Exported gl* symbols (sample) ==="
+          nm -gU "$DYLIB" | grep -Ei ' [Tt] _(glCreate|glDrawArrays|glGetString)' | head
+          echo "=== Required EGL entry points present? ==="
+          missing=0
+          for sym in eglGetDisplay eglInitialize eglTerminate eglChooseConfig \
+                     eglGetConfigs eglGetConfigAttrib eglCreateContext \
+                     eglDestroyContext eglMakeCurrent eglCreateWindowSurface \
+                     eglCreatePbufferSurface eglDestroySurface eglQuerySurface \
+                     eglSwapBuffers eglSwapInterval eglBindAPI eglReleaseThread \
+                     eglQueryString eglGetError eglGetCurrentContext \
+                     eglGetCurrentSurface eglGetCurrentDisplay eglQueryContext \
+                     eglWaitClient eglWaitGL eglWaitNative eglGetPlatformDisplay; do
+            if nm -gU "$DYLIB" | grep -qE " [Tt] _?${sym}$"; then
+              echo "OK   $sym"
+            else
+              echo "MISS $sym"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::Required EGL entry points missing from libmithril.dylib export table — host dlsym() will fail."
+            exit 1
+          fi
+
       - name: Ad-hoc codesign
         run: |
           codesign -s - "${{ steps.locate.outputs.path }}" || echo "codesign skipped (best-effort)"
