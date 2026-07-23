@@ -120,10 +120,10 @@ bool spirv_to_msl(const std::vector<uint32_t>& spirv, std::string& out, std::str
     spvc_compiler_options opts = nullptr;
     spvc_compiler_create_compiler_options(compiler, &opts);
     // Target iOS Metal Shading Language. Lowest supported device is the A11 SoC
-    // (iPhone 8 / 8 Plus / X) running iOS 13+, which exposes Metal 2 and MSL 2.2.
-    // MSL 2.3 requires iOS 14, so we cap at 2.2 to keep A11 devices working.
+    // (iPhone 8 / 8 Plus / X) running iOS 14.0+, which exposes Metal 2 and MSL
+    // 2.3. iOS 14 is the deployment floor, so MSL 2.3 is always available.
     spvc_compiler_options_set_uint(opts, SPVC_COMPILER_OPTION_MSL_VERSION,
-                                   SPVC_MAKE_MSL_VERSION(2, 2, 0));
+                                   SPVC_MAKE_MSL_VERSION(2, 3, 0));
     spvc_compiler_install_compiler_options(compiler, opts);
 
     const char* result = nullptr;
