@@ -1,0 +1,68 @@
+name: Build Mithril-Wapper for iOS
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Download ios-cmake toolchain
+        run: |
+          curl -fsSL -o ios.toolchain.cmake \
+            https://github.com/leetal/ios-cmake/raw/master/ios.toolchain.cmake
+          echo "Toolchain downloaded:"
+          ls -l ios.toolchain.cmake
+
+      - name: Configure (iOS arm64)
+        run: |
+          cmake -B build \
+            -DCMAKE_TOOLCHAIN_FILE=ios.toolchain.cmake \
+            -DPLATFORM=OS64 \
+            -DDEPLOYMENT_TARGET=14.0 \
+            -DENABLE_BITCODE=OFF \
+            -DENABLE_ARC=OFF \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_C_FLAGS="-Wno-error=implicit-function-declaration" \
+            -DCMAKE_CXX_FLAGS="-Wno-error"
+
+      - name: Build libmithril.dylib
+        run: |
+          cmake --build build --config RelWithDebInfo --target mithril -j$(sysctl -n hw.ncpu)
+
+      - name: Locate dylib
+        id: locate
+        run: |
+          DYLIB=$(find build -name 'libmithril.dylib' -type f | head -1)
+          echo "Found: $DYLIB"
+          echo "path=$DYLIB" >> "$GITHUB_OUTPUT"
+          ls -l "$DYLIB"
+          file "$DYLIB"
+
+      - name: Ad-hoc codesign
+        run: |
+          codesign -s - "${{ steps.locate.outputs.path }}" || echo "codesign skipped (best-effort)"
+
+      - name: Upload dylib artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mithril-Wapper-iOS-dylib
+          path: ${{ steps.locate.outputs.path }}
+          if-no-files-found: error
+
+      - name: Upload full build tree (debug)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mithril-Wapper-build-tree
+          path: build
+          if-no-files-found: warn
