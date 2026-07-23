@@ -22,24 +22,7 @@
 | 平台 | Android / iOS | **仅 iOS** |
 | 状态机 | `gl_state`（program / tex unit / draw fbo 等） | 独立 `gl_state`，结构参考其健壮性设计 |
 
----
 
-## 开发计划
-
-> 完成一项以 ✅ 标记，进行中为 🔄，未开始为 ☐。
-
-- ✅ 1. 项目初始化：创建 `MobileGlues` 只读参考分支并推送至远端（不修改其源码）
-- ✅ 2. 构建系统：`CMakeLists.txt` + `ios-cmake` 工具链，`glslang` / `SPIRV-Cross` 经 `FetchContent` 拉取
-- ✅ 3. OpenGL Core Profile C API 拦截层：导出 GL 符号；旧式固定管线函数以 stub 形式提供
-- ✅ 4. GLSL → SPIR-V → MSL 着色器转换管线（glslang 编译 + spirv-cross MSL 后端 + 编译缓存）
-- ✅ 5. Metal 后端：`MTLDevice` / `MTLCommandQueue` / `MTLCommandBuffer` / `MTLRenderCommandEncoder` 封装
-- ✅ 6. OpenGL Core Profile 状态机：program / VAO / FBO / texture / blend / depth / viewport / cap 开关
-- ✅ 7. 核心绘制路径：`glDrawArrays` / `glDrawElements` → Metal 渲染编码；pipeline state 缓存；顶点属性绑定；uniform buffer
-- ✅ 8. glX 符号查找：`glXGetProcAddress` / `glXGetProcAddressARB`（经 `dlsym` 解析本库符号）
-- ✅ 9. GitHub Actions CI：iOS arm64 构建、ad-hoc 签名、上传 `libmithril.dylib` 产物
-- ✅ 10. README 文档（仅 iOS）
-
----
 
 ## 目录结构
 
