@@ -1,4 +1,4 @@
-// Mithril-Wapper - src/init.cpp
+// Mithril-Wapper - init.cpp
 // Static initialisation: ensures the state machine + Metal backend come up
 // before any GL call is serviced (mirrors MobileGlues' static-block pattern).
 #include "includes.h"

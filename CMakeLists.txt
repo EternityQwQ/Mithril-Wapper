@@ -20,10 +20,10 @@ set(CMAKE_VISIBILITY_INLINES_HIDDEN OFF)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fvisibility=default")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fvisibility=default")
 
-include(FetchContent)
-
 # ---------------------------------------------------------------------------
-# glslang: GLSL front-end -> SPIR-V
+# glslang: GLSL front-end -> SPIR-V  (submodule under 3rdparty/, mirrors the
+# MobileGlues layout which uses add_subdirectory(3rdparty/glslang) instead of
+# FetchContent so the sources are available for local hacking).
 # ---------------------------------------------------------------------------
 set(ENABLE_RTTI                ON  CACHE BOOL "" FORCE)
 set(ENABLE_HLSL                OFF CACHE BOOL "" FORCE)
@@ -32,14 +32,7 @@ set(ENABLE_GLSLANG_BINARIES    OFF CACHE BOOL "" FORCE)
 set(BUILD_EXTERNAL             OFF CACHE BOOL "" FORCE)
 set(SKIP_GLSLANG_INSTALL       ON  CACHE BOOL "" FORCE)
 set(GLSLANG_TESTS              OFF CACHE BOOL "" FORCE)
-
-FetchContent_Declare(
-    glslang
-    GIT_REPOSITORY https://github.com/KhronosGroup/glslang.git
-    GIT_TAG        14.3.0
-    GIT_SHALLOW    TRUE
-)
-FetchContent_MakeAvailable(glslang)
+add_subdirectory(Mithril-Wapper-cpp/3rdparty/glslang)
 
 # ---------------------------------------------------------------------------
 # SPIRV-Cross: SPIR-V -> MSL (Metal Shading Language)
@@ -55,40 +48,33 @@ set(SPIRV_CROSS_ENABLE_UTIL    OFF CACHE BOOL "" FORCE)
 set(SPIRV_CROSS_STATIC         ON  CACHE BOOL "" FORCE)
 set(SPIRV_CROSS_FORCE_PIC      ON  CACHE BOOL "" FORCE)
 set(SPIRV_CROSS_SKIP_INSTALL   ON  CACHE BOOL "" FORCE)
-
-FetchContent_Declare(
-    spirv_cross
-    GIT_REPOSITORY https://github.com/KhronosGroup/SPIRV-Cross.git
-    GIT_TAG        vulkan-sdk-1.3.290.0
-    GIT_SHALLOW    TRUE
-)
-FetchContent_MakeAvailable(spirv_cross)
+add_subdirectory(Mithril-Wapper-cpp/3rdparty/SPIRV-Cross)
 
 # ---------------------------------------------------------------------------
 # Mithril-Wapper shared library (iOS arm64 dylib)
 # ---------------------------------------------------------------------------
 set(MITHRIL_SOURCES
-    src/init.cpp
-    src/log.cpp
-    src/state.cpp
-    src/stubs.cpp
-    src/gl.cpp
-    src/getter.cpp
-    src/program.cpp
-    src/shader.cpp
-    src/buffer.cpp
-    src/vertexattrib.cpp
-    src/texture.cpp
-    src/framebuffer.cpp
-    src/drawing.cpp
-    src/glx/lookup.cpp
+    Mithril-Wapper-cpp/init.cpp
+    Mithril-Wapper-cpp/gl/log.cpp
+    Mithril-Wapper-cpp/gl/state.cpp
+    Mithril-Wapper-cpp/gl/stubs.cpp
+    Mithril-Wapper-cpp/gl/gl.cpp
+    Mithril-Wapper-cpp/gl/getter.cpp
+    Mithril-Wapper-cpp/gl/program.cpp
+    Mithril-Wapper-cpp/gl/shader.cpp
+    Mithril-Wapper-cpp/gl/buffer.cpp
+    Mithril-Wapper-cpp/gl/vertexattrib.cpp
+    Mithril-Wapper-cpp/gl/texture.cpp
+    Mithril-Wapper-cpp/gl/framebuffer.cpp
+    Mithril-Wapper-cpp/gl/drawing.cpp
+    Mithril-Wapper-cpp/glx/lookup.cpp
 )
 
 if(APPLE)
     list(APPEND MITHRIL_SOURCES
-        src/metal/metal_context.mm
-        src/metal/metal_objects.mm
-        src/metal/metal_pipeline.mm
+        Mithril-Wapper-cpp/metal/metal_context.mm
+        Mithril-Wapper-cpp/metal/metal_objects.mm
+        Mithril-Wapper-cpp/metal/metal_pipeline.mm
     )
 endif()
 
@@ -96,23 +82,28 @@ add_library(${PROJECT_NAME} SHARED ${MITHRIL_SOURCES})
 
 target_include_directories(${PROJECT_NAME}
     PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/Mithril-Wapper-cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Mithril-Wapper-cpp/include
 )
 
-# glslang / SPIRV-Cross
+# glslang / SPIRV-Cross.
+# NOTE: glslang-default-resource-limits provides GetDefaultResources() which
+# lives in ResourceLimits/ResourceLimits.cpp. Without it the link fails with
+# "Undefined symbols: GetDefaultResources()" when ENABLE_GLSLANG_BINARIES=OFF
+# (the standalone glslangValidator that used to host it is disabled).
 target_link_libraries(${PROJECT_NAME} PRIVATE
     glslang::glslang
     glslang::SPIRV
+    glslang::glslang-default-resource-limits
     spirv-cross-c
 )
 
 if(APPLE)
     # ARC for Objective-C++ Metal backend
     set_source_files_properties(
-        src/metal/metal_context.mm
-        src/metal/metal_objects.mm
-        src/metal/metal_pipeline.mm
+        Mithril-Wapper-cpp/metal/metal_context.mm
+        Mithril-Wapper-cpp/metal/metal_objects.mm
+        Mithril-Wapper-cpp/metal/metal_pipeline.mm
         PROPERTIES COMPILE_FLAGS "-fobjc-arc"
     )
     target_link_libraries(${PROJECT_NAME} PRIVATE

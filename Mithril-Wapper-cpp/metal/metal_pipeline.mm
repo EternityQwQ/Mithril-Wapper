@@ -1,4 +1,4 @@
-// Mithril-Wapper - src/metal/metal_pipeline.mm
+// Mithril-Wapper - metal/metal_pipeline.mm
 // MSL -> MTLLibrary -> MTLRenderPipelineState, cached by a signature of
 // (program, vertex format, color/depth pixel formats, primitive mode).
 #import <Metal/Metal.h>
@@ -6,7 +6,7 @@
 
 #include "metal_context.h"
 #include "metal_pipeline.h"
-#include "../log.h"
+#include "../gl/log.h"
 
 #include <string>
 #include <sstream>

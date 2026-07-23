@@ -1,4 +1,4 @@
-// Mithril-Wapper - src/shader.h
+// Mithril-Wapper - shader.h
 // GLSL -> SPIR-V (glslang) -> MSL (spirv-cross) translation, with a cache.
 #ifndef MITHRIL_SHADER_H
 #define MITHRIL_SHADER_H

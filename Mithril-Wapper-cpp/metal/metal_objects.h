@@ -1,4 +1,4 @@
-// Mithril-Wapper - src/metal/metal_objects.h
+// Mithril-Wapper - metal/metal_objects.h
 // C interface for managing MTLBuffer / MTLTexture objects keyed by GL names.
 #ifndef MITHRIL_METAL_OBJECTS_H
 #define MITHRIL_METAL_OBJECTS_H

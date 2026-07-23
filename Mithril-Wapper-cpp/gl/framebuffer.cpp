@@ -1,4 +1,4 @@
-// Mithril-Wapper - src/framebuffer.cpp
+// Mithril-Wapper - framebuffer.cpp
 // Framebuffer objects and attachment resolution.
 #include "includes.h"
 #include "framebuffer.h"

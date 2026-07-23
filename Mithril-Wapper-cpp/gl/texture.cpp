@@ -1,4 +1,4 @@
-// Mithril-Wapper - src/texture.cpp
+// Mithril-Wapper - texture.cpp
 // Texture object management: storage, upload, parameters, mipmap generation.
 #include "includes.h"
 

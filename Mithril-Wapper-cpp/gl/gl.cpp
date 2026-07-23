@@ -1,4 +1,4 @@
-// Mithril-Wapper - src/gl.cpp
+// Mithril-Wapper - gl.cpp
 // Core state-control GL entry points: clear, enable/disable, viewport, blend,
 // depth, stencil, rasterizer, pixel store, active texture, flush/finish.
 #include "includes.h"

@@ -1,4 +1,4 @@
-// Mithril-Wapper - src/state.h
+// Mithril-Wapper - state.h
 // OpenGL Core Profile state machine. Holds all current GL state and the
 // object name -> object tables. Metal-side handles are stored as opaque
 // void* here and managed by src/metal/*.mm through the metal_* C API.

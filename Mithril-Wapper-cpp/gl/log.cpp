@@ -1,4 +1,4 @@
-// Mithril-Wapper - src/log.cpp
+// Mithril-Wapper - log.cpp
 #include "log.h"
 
 #include <cstdio>

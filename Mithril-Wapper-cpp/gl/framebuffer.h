@@ -1,4 +1,4 @@
-// Mithril-Wapper - src/framebuffer.h
+// Mithril-Wapper - framebuffer.h
 #ifndef MITHRIL_FRAMEBUFFER_H
 #define MITHRIL_FRAMEBUFFER_H
 

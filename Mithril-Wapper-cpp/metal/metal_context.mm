@@ -1,10 +1,10 @@
-// Mithril-Wapper - src/metal/metal_context.mm
+// Mithril-Wapper - metal/metal_context.mm
 // Metal device / command queue / render-pass lifecycle.
 #import <Metal/Metal.h>
 #import <Foundation/Foundation.h>
 
 #include "metal_context.h"
-#include "../log.h"
+#include "../gl/log.h"
 
 static id<MTLDevice>             g_device  = nil;
 static id<MTLCommandQueue>       g_queue   = nil;

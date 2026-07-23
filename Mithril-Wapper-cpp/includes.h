@@ -1,13 +1,13 @@
-// Mithril-Wapper - src/includes.h
+// Mithril-Wapper - includes.h
 // Central internal header pulled in by every translation unit.
 #ifndef MITHRIL_INCLUDES_H
 #define MITHRIL_INCLUDES_H
 
 #include <GL/gl.h>
 
-#include "log.h"
-#include "state.h"
-#include "framebuffer.h"
+#include "gl/log.h"
+#include "gl/state.h"
+#include "gl/framebuffer.h"
 #include "metal/metal_context.h"
 #include "metal/metal_objects.h"
 #include "metal/metal_pipeline.h"

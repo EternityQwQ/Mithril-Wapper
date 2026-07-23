@@ -1,16 +1,21 @@
-// Mithril-Wapper - src/getter.cpp
+// Mithril-Wapper - getter.cpp
 // GL state getters: glGet*v, glGetString / glGetStringi, glGetError.
 #include "includes.h"
 
 /* ---- Strings ---- */
-static const char* kVendor   = "Mithril-Wapper Project";
+// Vendor string lists the project developers (mirrors MobileGlues' pattern of
+// putting the maintainer names in GL_VENDOR).
+static const char* kVendor   = "EternityQwQ, yitenchen123";
 static const char* kRenderer = "Mithril-Wapper (Metal backend)";
-static const char* kVersion  = "4.6.0 Mithril-Wapper 1.0 (Metal)";
-static const char* kShadingLangVer = "4.60";
+// Target desktop GL 3.3 Core Profile (the minimum required by Minecraft:
+// Java Edition's modern pipeline). The Metal backend implements the subset
+// of Core Profile 3.3 actually exercised by the host.
+static const char* kVersion  = "3.3.0 Mithril-Wapper 1.0 (Metal)";
+static const char* kShadingLangVer = "3.30";
 
 // Sparse extensions list — applications usually only need the count and the
-// GL_ARB_* strings they probe for. Adding the common MC-relevant ones.
-// Defined before glGetIntegerv so the GL_NUM_EXTENSIONS case can size it.
+// GL_ARB_* strings they probe for. Kept within the GL 3.3 Core Profile scope
+// (no GL 4.x-only extensions).
 static const char* kExtensions[] = {
     "GL_ARB_vertex_buffer_object",
     "GL_ARB_vertex_array_object",
@@ -19,12 +24,7 @@ static const char* kExtensions[] = {
     "GL_ARB_vertex_shader",
     "GL_ARB_fragment_shader",
     "GL_ARB_geometry_shader4",
-    "GL_ARB_tessellation_shader",
-    "GL_ARB_compute_shader",
     "GL_ARB_uniform_buffer_object",
-    "GL_ARB_shader_storage_buffer_object",
-    "GL_ARB_multi_draw_indirect",
-    "GL_ARB_draw_indirect",
     "GL_ARB_draw_elements_base_vertex",
     "GL_ARB_instanced_arrays",
     "GL_ARB_texture_multisample",
@@ -100,8 +100,8 @@ void glGetIntegerv(GLenum pname, GLint* params) {
         case GL_NUM_EXTENSIONS:
             *params = (GLint)(sizeof(kExtensions)/sizeof(kExtensions[0]));
             break;
-        case GL_MAJOR_VERSION:                *params = 4; break;
-        case GL_MINOR_VERSION:                *params = 6; break;
+        case GL_MAJOR_VERSION:                *params = 3; break;
+        case GL_MINOR_VERSION:                *params = 3; break;
         case GL_CONTEXT_FLAGS:                *params = 0; break;
         case GL_CONTEXT_PROFILE_MASK:         *params = GL_CONTEXT_CORE_PROFILE_BIT; break;
         case GL_DOUBLEBUFFER:                 *params = GL_TRUE; break;
@@ -156,7 +156,7 @@ void glGetIntegerv(GLenum pname, GLint* params) {
         case GL_STENCIL_FAIL:                 *params = (GLint)g_state->stencilSfail; break;
         case GL_STENCIL_PASS_DEPTH_FAIL:      *params = (GLint)g_state->stencilDpfail; break;
         case GL_STENCIL_PASS_DEPTH_PASS:      *params = (GLint)g_state->stencilDppass; break;
-        case GL_SHADING_LANGUAGE_VERSION:     *params = 460; break;
+        case GL_SHADING_LANGUAGE_VERSION:     *params = 330; break;
         default:                              *params = 0; break;
     }
 }

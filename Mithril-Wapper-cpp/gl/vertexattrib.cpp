@@ -1,4 +1,4 @@
-// Mithril-Wapper - src/vertexattrib.cpp
+// Mithril-Wapper - vertexattrib.cpp
 // Vertex Array Objects and vertex attribute pointer state.
 #include "includes.h"
 

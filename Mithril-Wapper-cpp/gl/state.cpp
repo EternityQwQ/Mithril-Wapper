@@ -1,4 +1,4 @@
-// Mithril-Wapper - src/state.cpp
+// Mithril-Wapper - state.cpp
 // Implementation of the GL state machine.
 #include "state.h"
 

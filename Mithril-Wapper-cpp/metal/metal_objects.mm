@@ -1,11 +1,11 @@
-// Mithril-Wapper - src/metal/metal_objects.mm
+// Mithril-Wapper - metal/metal_objects.mm
 // MTLBuffer / MTLTexture / MTLSamplerState management keyed by GL names.
 #import <Metal/Metal.h>
 #import <Foundation/Foundation.h>
 
 #include "metal_context.h"
 #include "metal_objects.h"
-#include "../log.h"
+#include "../gl/log.h"
 
 static NSMutableDictionary<NSNumber*, id<MTLBuffer>>* g_buffers() {
     static NSMutableDictionary* d = [NSMutableDictionary new];

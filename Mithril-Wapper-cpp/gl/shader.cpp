@@ -1,4 +1,4 @@
-// Mithril-Wapper - src/shader.cpp
+// Mithril-Wapper - shader.cpp
 // GLSL (desktop Core Profile) -> SPIR-V -> MSL translation pipeline.
 //   * glslang compiles GLSL to Vulkan SPIR-V
 //   * spirv-cross transpiles SPIR-V to Metal Shading Language (MSL backend)

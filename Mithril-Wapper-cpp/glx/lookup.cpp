@@ -1,4 +1,4 @@
-// Mithril-Wapper - src/glx/lookup.cpp
+// Mithril-Wapper - glx/lookup.cpp
 // glXGetProcAddress / glXGetProcAddressARB: resolve GL/GLX symbol names to
 // function pointers exported by this very dylib. Mirrors the dlsym-based
 // lookup used by MobileGlues' glx/lookup.cpp, but resolves against ourselves

@@ -1,4 +1,4 @@
-// Mithril-Wapper - src/stubs.cpp
+// Mithril-Wapper - stubs.cpp
 // Legacy fixed-function entry points provided as no-op stubs so that
 // applications dlsym-ing GL 1.x/2.x symbols resolve cleanly. The Core Profile
 // path does not call into any of these; they exist only for symbol presence.

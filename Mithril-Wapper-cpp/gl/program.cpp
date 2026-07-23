@@ -1,4 +1,4 @@
-// Mithril-Wapper - src/program.cpp
+// Mithril-Wapper - program.cpp
 // Shader / program object lifecycle: source, compile (GLSL->MSL), link, use,
 // uniform reflection + setters. Compiled MSL is cached on the program for the
 // Metal pipeline cache to consume.

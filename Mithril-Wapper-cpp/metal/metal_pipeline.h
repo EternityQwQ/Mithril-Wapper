@@ -1,4 +1,4 @@
-// Mithril-Wapper - src/metal/metal_pipeline.h
+// Mithril-Wapper - metal/metal_pipeline.h
 // Pipeline-state cache: MSL source -> MTLLibrary -> MTLRenderPipelineState,
 // keyed by (program, vertex format signature, color/depth pixel formats).
 #ifndef MITHRIL_METAL_PIPELINE_H

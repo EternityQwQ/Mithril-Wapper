@@ -1,4 +1,4 @@
-// Mithril-Wapper - src/drawing.cpp
+// Mithril-Wapper - drawing.cpp
 // Core drawing path: glDrawArrays / glDrawElements / instanced variants ->
 // Metal render-pass + encoder orchestration.
 //

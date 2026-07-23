@@ -1,4 +1,4 @@
-// Mithril-Wapper - src/log.h
+// Mithril-Wapper - log.h
 // Logging helpers (stderr-based; lightweight, no dependencies).
 #ifndef MITHRIL_LOG_H
 #define MITHRIL_LOG_H

@@ -1,4 +1,4 @@
-// Mithril-Wapper - src/metal/metal_context.h
+// Mithril-Wapper - metal/metal_context.h
 // C interface to the Metal device / command queue / render-pass lifecycle.
 // Implemented in metal_context.mm. All handles are opaque void* (id<MTL...>).
 #ifndef MITHRIL_METAL_CONTEXT_H

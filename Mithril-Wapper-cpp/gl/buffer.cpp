@@ -1,4 +1,4 @@
-// Mithril-Wapper - src/buffer.cpp
+// Mithril-Wapper - buffer.cpp
 // Buffer object (VBO/IBO/UBO) management. CPU-side shadow storage in
 // mithril::Buffer::data plus a paired MTLBuffer via metal_get_or_create_buffer.
 #include "includes.h"
