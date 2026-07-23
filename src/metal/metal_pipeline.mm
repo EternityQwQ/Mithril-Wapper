@@ -193,8 +193,9 @@ void* metal_get_or_create_pipeline(GLuint program,
     if (depth_format) {
         pd.depthAttachmentPixelFormat = (MTLPixelFormat)depth_format;
         if (depth_format == MTLPixelFormatDepth32Float_Stencil8 ||
-            depth_format == MTLPixelFormatStencil8 ||
-            depth_format == MTLPixelFormatDepth24Unorm_Stencil8) {
+            depth_format == MTLPixelFormatStencil8) {
+            // MTLPixelFormatDepth24Unorm_Stencil8 is macOS-only; iOS uses
+            // Depth32Float_Stencil8 for GL_DEPTH24_STENCIL8.
             pd.stencilAttachmentPixelFormat = (MTLPixelFormat)depth_format;
         }
     }

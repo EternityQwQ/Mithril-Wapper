@@ -72,8 +72,9 @@ static MTLRenderPassDescriptor* build_pass_desc(void** color_textures,
         desc.depthAttachment.storeAction = MTLStoreActionStore;
         desc.depthAttachment.clearDepth  = g_clear_depth;
         if (dt.pixelFormat == MTLPixelFormatDepth32Float_Stencil8 ||
-            dt.pixelFormat == MTLPixelFormatStencil8 ||
-            dt.pixelFormat == MTLPixelFormatDepth24Unorm_Stencil8) {
+            dt.pixelFormat == MTLPixelFormatStencil8) {
+            // MTLPixelFormatDepth24Unorm_Stencil8 is macOS-only; on iOS we
+            // always map GL_DEPTH24_STENCIL8 to Depth32Float_Stencil8 above.
             desc.stencilAttachment.texture = dt;
             desc.stencilAttachment.loadAction  = g_depth_load;
             desc.stencilAttachment.storeAction = MTLStoreActionStore;
@@ -236,13 +237,13 @@ void metal_encoder_set_depth_test(int enabled, int write_mask, int compare_func)
 }
 
 void metal_encoder_set_color_write_mask(int r, int g, int b, int a) {
-    if (!g_enc) return;
-    MTLColorWriteMask m = 0;
-    if (r) m |= MTLColorWriteMaskRed;
-    if (g) m |= MTLColorWriteMaskGreen;
-    if (b) m |= MTLColorWriteMaskBlue;
-    if (a) m |= MTLColorWriteMaskAlpha;
-    [g_enc setColorWriteMask:m];
+    // In Metal, color write mask is a per-attachment property of
+    // MTLRenderPipelineState (MTLRenderPipelineColorAttachmentDescriptor
+    // .writeMask), NOT a dynamic MTLRenderCommandEncoder state. There is no
+    // -setColorWriteMask: on the encoder. It is applied at pipeline build
+    // time (see metal_pipeline.mm), so nothing to do here at encode time.
+    // Parameters retained for API symmetry with the other encoder helpers.
+    (void)r; (void)g; (void)b; (void)a;
 }
 
 void metal_encoder_draw_arrays(int primitive, int first, int count) {

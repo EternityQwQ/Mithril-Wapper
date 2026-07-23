@@ -262,6 +262,22 @@ extern "C" {
 #define GL_R11F_G11F_B10F               0x8C3A
 #define GL_RGB10_A2                     0x8059
 #define GL_RGB10_A2UI                   0x906F
+/* Integer internal formats (sized) */
+#define GL_RG8I                         0x8237
+#define GL_RG8UI                        0x8238
+#define GL_RG16I                        0x8239
+#define GL_RG16UI                       0x823A
+#define GL_RGB8I                        0x8D8F
+#define GL_RGB8UI                       0x8D7D
+#define GL_RGB16UI                      0x8D77
+#define GL_RGBA8I                       0x8D8E
+#define GL_RGBA8UI                      0x8D7C
+#define GL_RGBA16I                      0x8D88
+#define GL_RGBA16UI                     0x8D76
+#define GL_RGB32UI                      0x8D71
+#define GL_RGB32I                       0x8D83
+#define GL_RGBA32I                      0x8D82
+#define GL_RGBA32UI                     0x8D70
 #define GL_DEPTH_COMPONENT16            0x81A5
 #define GL_DEPTH_COMPONENT24            0x81A6
 #define GL_DEPTH_COMPONENT32            0x81A7
