@@ -1,7 +1,7 @@
 # Mithril-Wapper
 
 > OpenGL 3.3 Core Profile → Metal 翻译层，让依赖桌面 OpenGL 的应用能在仅有
-> Metal 后端的 Apple 平台iOS上运行。
+> Metal 后端的iOS上运行。
 
 Mithril-Wapper 把宿主程序发出的 **OpenGL 3.3 Core Profile** 调用实时翻译成
 **Metal API** 调用，并自带一套基于 **Metal 2 + CAMetalLayer** 的 **EGL 1.5**
