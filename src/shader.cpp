@@ -88,7 +88,10 @@ bool glsl_to_spirv(GLenum gl_stage, const std::string& src,
     glslang::TIntermediate* inter = program.getIntermediate(stage);
     if (!inter) { info = "no intermediate after link"; return false; }
 
-    glslang::GlslangToSpv(*inter, spirv, nullptr);
+    // Pass an explicit SpvOptions pointer to disambiguate from the 4-arg
+    // GlslangToSpv(intermediate, spirv, SpvBuildLogger*, SpvOptions*) overload.
+    glslang::SpvOptions spv_opts;
+    glslang::GlslangToSpv(*inter, spirv, &spv_opts);
     if (spirv.empty()) { info = "SPIR-V generation produced no words"; return false; }
     return true;
 }
@@ -116,9 +119,10 @@ bool spirv_to_msl(const std::vector<uint32_t>& spirv, std::string& out, std::str
 
     spvc_compiler_options opts = nullptr;
     spvc_compiler_create_compiler_options(compiler, &opts);
-    // Target iOS Metal Shading Language; enable modern defaults.
+    // Target iOS Metal Shading Language. iOS 14.0 deployment target supports up
+    // to MSL 2.3. SPVC_MAKE_MSL_VERSION builds the version int the C API expects.
     spvc_compiler_options_set_uint(opts, SPVC_COMPILER_OPTION_MSL_VERSION,
-                                   SPVC_MSL_VERSION_IOS_3_0);
+                                   SPVC_MAKE_MSL_VERSION(2, 3, 0));
     spvc_compiler_install_compiler_options(compiler, opts);
 
     const char* result = nullptr;
