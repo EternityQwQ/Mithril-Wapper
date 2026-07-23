@@ -115,7 +115,8 @@ void glGetIntegerv(GLenum pname, GLint* params) {
         case GL_UNIFORM_BUFFER_BINDING:       *params = (GLint)g_state->currentUniformBuffer; break;
         case GL_VERTEX_ARRAY_BINDING:         *params = (GLint)g_state->currentVAO; break;
         case GL_CURRENT_PROGRAM:              *params = (GLint)g_state->currentProgram; break;
-        case GL_DRAW_FRAMEBUFFER_BINDING:
+        // GL_DRAW_FRAMEBUFFER_BINDING and GL_FRAMEBUFFER_BINDING share the same
+        // numeric value (0x8CA6) per the GL spec, so a single case covers both.
         case GL_FRAMEBUFFER_BINDING:          *params = (GLint)g_state->currentDrawFBO; break;
         case GL_READ_FRAMEBUFFER_BINDING:     *params = (GLint)g_state->currentReadFBO; break;
         case GL_VIEWPORT:
