@@ -8,10 +8,7 @@
 **GLSL → SPIR-V → MSL**（Metal Shading Language）管线，与底层 GPU 直接对接，
 不再依赖任何 OpenGL ES / ANGLE 中间层。
 
-> 注：仓库内 `MobileGlues` 分支为**只读参考**，来源于
-> <https://github.com/MobileGL-Dev/MobileGlues>，**不允许修改**。
-> 本项目仅参考其 OpenGL Core Profile 拦截方式、glsl 转换思路、glx 实现与状态机健壮性设计，
-> 实际代码完全独立、直连 Metal。
+
 
 ---
 
