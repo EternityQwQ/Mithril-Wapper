@@ -34,6 +34,7 @@
 #import <Metal/Metal.h>
 #import <QuartzCore/QuartzCore.h>
 #import <Foundation/Foundation.h>
+#import <objc/runtime.h>   // object_setClass() for layer coercion
 
 #include "includes.h"
 #include <EGL/egl.h>
@@ -247,11 +248,14 @@ EGLint config_get_attr(const EglConfig* cfg, EGLint attr) {
         case EGL_CONFIG_CAVEAT:   return EGL_NONE;
         case EGL_LEVEL:           return 0;
         case EGL_MAX_PBUFFER_WIDTH:  return 16384;
-        case EGL_MAX_PBUFFER_HEIGHT: return 16384;
         case EGL_MAX_PBUFFER_PIXELS: return 16384 * 16384;
         case EGL_NATIVE_RENDERABLE:  return EGL_FALSE;
-        case EGL_NATIVE_VISUAL_ID:   return 0;     // we report 0; gl_bridge.m tolerates this
-        case EGL_NATIVE_VISUAL_TYPE: return EGL_NONE;
+        // EGL_NATIVE_VISUAL_ID and EGL_MAX_PBUFFER_HEIGHT are the same token
+        // (0x3030) in the Khronos EGL spec; EGL_NATIVE_VISUAL_TYPE and
+        // EGL_SAMPLES share 0x3031. A config query at 0x3030 returns the
+        // native visual id (0 — gl_bridge.m tolerates this), and 0x3031
+        // returns the sample count (0 == no MSAA). One case label per value.
+        case EGL_NATIVE_VISUAL_ID:   return 0;
         case EGL_SAMPLES:            return 0;
         case EGL_SAMPLE_BUFFERS:     return 0;
         case EGL_TRANSPARENT_TYPE:   return EGL_NONE;
@@ -458,8 +462,8 @@ EGLSurface eglCreateWindowSurface(EGLDisplay dpy, EGLConfig config,
     if (!acquire_next_drawable(s)) {
         // nextDrawable can fail if the layer isn't sized yet; defer to
         // eglMakeCurrent / eglSwapBuffers which will retry.
-        NSLog(@"[egl] eglCreateWindowSurface: deferred first drawable (layer size = %@)",
-              NSStringFromSize(mtlLayer.drawableSize));
+        NSLog(@"[egl] eglCreateWindowSurface: deferred first drawable (layer size = %.0fx%.0f)",
+              mtlLayer.drawableSize.width, mtlLayer.drawableSize.height);
     }
     return (EGLSurface)s;
 }
@@ -669,7 +673,9 @@ EGLBoolean eglQueryContext(EGLDisplay dpy, EGLContext ctx,
         case EGL_CONTEXT_CLIENT_TYPE:
             *value = (t_boundAPI == EGL_OPENGL_ES_API) ? EGL_OPENGL_ES_API : EGL_OPENGL_API;
             break;
-        case EGL_CONTEXT_CLIENT_VERSION:
+        // EGL_CONTEXT_CLIENT_VERSION and EGL_CONTEXT_MAJOR_VERSION are the
+        // same token (0x3098) in the Khronos EGL spec (the latter is the EGL
+        // 1.5 rename of the former); a single case label covers both.
         case EGL_CONTEXT_MAJOR_VERSION: *value = c->majorVer; break;
         case EGL_CONTEXT_MINOR_VERSION: *value = c->minorVer; break;
         case EGL_RENDER_BUFFER:         *value = EGL_BACK_BUFFER; break;
