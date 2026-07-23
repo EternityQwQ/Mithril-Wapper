@@ -8,8 +8,8 @@
 
 #include <glslang/Public/ShaderLang.h>
 #include <glslang/Public/ResourceLimits.h>
-#include <glslang/SPIRV/GlslangToSpv.h>
-#include <spirv_cross/spirv_cross_c.h>
+#include <SPIRV/GlslangToSpv.h>
+#include <spirv_cross_c.h>
 
 #include <cstdint>
 #include <functional>
