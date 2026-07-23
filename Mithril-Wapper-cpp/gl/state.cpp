@@ -8,25 +8,41 @@ GLState* g_state = nullptr;
 
 bool state_init() {
     if (g_state && g_state->initialized) return true;
-    if (!g_state) g_state = new GLState{};
+    if (!g_state) g_state = state_create();
     g_state->initialized = true;
-
-    // Default VAO (name 0) is always present.
-    if (g_state->vaos.find(0) == g_state->vaos.end()) {
-        VertexArray vao{};
-        vao.id = 0;
-        g_state->vaos[0] = vao;
-    }
-    // Default framebuffer (name 0) is always present.
-    if (g_state->framebuffers.find(0) == g_state->framebuffers.end()) {
-        Framebuffer fbo{};
-        fbo.id = 0;
-        fbo.drawBuffers[0] = GL_COLOR_ATTACHMENT0;
-        fbo.drawBufferCount = 1;
-        fbo.readBuffer = GL_COLOR_ATTACHMENT0;
-        g_state->framebuffers[0] = fbo;
-    }
     return true;
+}
+
+/*
+ * Build a fresh GLState with the default VAO (name 0) and default framebuffer
+ * (name 0) pre-populated. Used both by state_init() for the implicit global
+ * state and by the EGL layer (egl/egl.cpp) which allocates one GLState per
+ * EGLContext so contexts do not share GL object tables.
+ */
+GLState* state_create() {
+    GLState* s = new GLState{};
+    s->initialized = true;
+
+    VertexArray vao{};
+    vao.id = 0;
+    s->vaos[0] = vao;
+
+    Framebuffer fbo{};
+    fbo.id = 0;
+    fbo.drawBuffers[0] = GL_COLOR_ATTACHMENT0;
+    fbo.drawBufferCount = 1;
+    fbo.readBuffer = GL_COLOR_ATTACHMENT0;
+    s->framebuffers[0] = fbo;
+    return s;
+}
+
+void state_destroy(GLState* s) {
+    if (!s) return;
+    /* EGL default color/depth textures are owned by the EGLSurface, not by
+     * the GLState, so we do not release them here. */
+    s->eglDefaultColor = nullptr;
+    s->eglDefaultDepth = nullptr;
+    delete s;
 }
 
 VertexArray* state_get_vao(GLuint id) {

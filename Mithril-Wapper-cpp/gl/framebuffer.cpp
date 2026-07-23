@@ -176,6 +176,21 @@ int collect_draw_fbo_attachments(void* out_color[8], void** out_depth,
     if (out_w) *out_w = g_state->viewportW;
     if (out_h) *out_h = g_state->viewportH;
 
+    /*
+     * EGL-backed default framebuffer: when an EGLSurface is current, the
+     * CAMetalLayer drawable's MTLTexture is installed on the GLState. GL
+     * commands against framebuffer 0 render straight into the on-screen
+     * drawable. EGL swaps the texture per-frame (eglSwapBuffers acquires the
+     * next drawable and replaces this pointer).
+     */
+    if (g_state->currentDrawFBO == 0 && g_state->eglDefaultColor) {
+        out_color[0] = g_state->eglDefaultColor;
+        if (g_state->eglDefaultDepth) *out_depth = g_state->eglDefaultDepth;
+        if (g_state->eglDefaultWidth > 0 && out_w) *out_w = g_state->eglDefaultWidth;
+        if (g_state->eglDefaultHeight > 0 && out_h) *out_h = g_state->eglDefaultHeight;
+        return 1;
+    }
+
     Framebuffer* fbo = state_get_framebuffer(g_state->currentDrawFBO);
     if (!fbo) return 0;
 

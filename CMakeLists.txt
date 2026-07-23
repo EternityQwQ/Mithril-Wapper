@@ -75,6 +75,11 @@ if(APPLE)
         Mithril-Wapper-cpp/metal/metal_context.mm
         Mithril-Wapper-cpp/metal/metal_objects.mm
         Mithril-Wapper-cpp/metal/metal_pipeline.mm
+        # EGL 1.5 surface backed by Metal 2 (CAMetalLayer). On iOS this is
+        # the layer Amethyst-iOS' gl_bridge.m dlsym's eglCreateContext etc.
+        # against. Compiled as Objective-C++ so it can talk to CAMetalLayer
+        # and MTLDevice directly.
+        Mithril-Wapper-cpp/egl/egl.mm
     )
 endif()
 
@@ -99,11 +104,12 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 )
 
 if(APPLE)
-    # ARC for Objective-C++ Metal backend
+    # ARC for Objective-C++ Metal + EGL-on-Metal backend
     set_source_files_properties(
         Mithril-Wapper-cpp/metal/metal_context.mm
         Mithril-Wapper-cpp/metal/metal_objects.mm
         Mithril-Wapper-cpp/metal/metal_pipeline.mm
+        Mithril-Wapper-cpp/egl/egl.mm
         PROPERTIES COMPILE_FLAGS "-fobjc-arc"
     )
     target_link_libraries(${PROJECT_NAME} PRIVATE

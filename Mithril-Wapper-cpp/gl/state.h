@@ -169,6 +169,19 @@ struct GLState {
     GLuint boundTextures[kMaxTextureUnits] = {0}; // indexed by unit, target-less simplification
     GLenum boundTextureTargets[kMaxTextureUnits] = {GL_TEXTURE_2D};
 
+    /*
+     * EGL-backed default framebuffer. When the EGL layer (egl/egl.cpp) makes a
+     * surface current, it installs the CAMetalLayer drawable's MTLTexture here
+     * so that GL commands issued against framebuffer 0 render directly into
+     * the on-screen drawable. A depth/stencil MTLTexture is also installed
+     * when the EGLConfig requests one. These are owned by the EGLSurface, not
+     * by the GL object table, so the GL texture/sampler paths never touch them.
+     */
+    void* eglDefaultColor = nullptr;   // id<MTLTexture>
+    void* eglDefaultDepth = nullptr;   // id<MTLTexture> (Depth32Float_Stencil8)
+    int   eglDefaultWidth  = 0;
+    int   eglDefaultHeight = 0;
+
     // Clear values
     float clearColor[4] = {0, 0, 0, 0};
     double clearDepth = 1.0;
@@ -248,6 +261,17 @@ extern GLState* g_state;
 
 // Initialise the state machine (idempotent). Returns true on success.
 bool state_init();
+
+/*
+ * Allocate a fresh, independent GLState (used by the EGL layer so each
+ * EGLContext owns its own state). The returned pointer is heap-owned and
+ * must be released with state_destroy(). Does NOT touch the global
+ * `g_state` — the EGL layer is responsible for swapping g_state to point
+ * at the chosen context's state inside eglMakeCurrent.
+ */
+GLState* state_create();
+void state_destroy(GLState* s);
+
 VertexArray* state_get_vao(GLuint id);
 Buffer* state_get_buffer(GLuint id);
 Texture* state_get_texture(GLuint id);
