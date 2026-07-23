@@ -52,10 +52,14 @@ jobs:
       - name: Verify exported EGL/GL symbols
         run: |
           DYLIB="${{ steps.locate.outputs.path }}"
+          # Capture the exported-symbol table once. Re-running `nm` per symbol
+          # inside the loop also triggers SIGPIPE in llvm-nm (grep -q exits
+          # early), which spams the log with "LLVM ERROR: Broken pipe".
+          NM_OUT=$(nm -gU "$DYLIB")
           echo "=== Exported egl* symbols ==="
-          nm -gU "$DYLIB" | grep -Ei ' [Tt] _?egl' | head -40
+          echo "$NM_OUT" | grep -Ei ' [Tt] _?egl' | head -40
           echo "=== Exported gl* symbols (sample) ==="
-          nm -gU "$DYLIB" | grep -Ei ' [Tt] _(glCreate|glDrawArrays|glGetString)' | head
+          echo "$NM_OUT" | grep -Ei ' [Tt] _(glCreate|glDrawArrays|glGetString)' | head
           echo "=== Required EGL entry points present? ==="
           missing=0
           for sym in eglGetDisplay eglInitialize eglTerminate eglChooseConfig \
@@ -66,7 +70,7 @@ jobs:
                      eglQueryString eglGetError eglGetCurrentContext \
                      eglGetCurrentSurface eglGetCurrentDisplay eglQueryContext \
                      eglWaitClient eglWaitGL eglWaitNative eglGetPlatformDisplay; do
-            if nm -gU "$DYLIB" | grep -qE " [Tt] _?${sym}$"; then
+            if echo "$NM_OUT" | grep -qE " [Tt] _?${sym}$"; then
               echo "OK   $sym"
             else
               echo "MISS $sym"
