@@ -189,10 +189,14 @@ bool spirv_to_msl(const std::vector<uint32_t>& spirv, std::string& out, std::str
             size_t count = 0;
             if (spvc_resources_get_resource_list_for_type(resources,
                     SPVC_RESOURCE_TYPE_STAGE_INPUT, &list, &count) == SPVC_SUCCESS) {
+                // SpvDecorationLocation = 30 (from spirv.h, avoids extra include)
+                const unsigned SpvDecorationLocation = 30;
                 for (size_t i = 0; i < count; ++i) {
+                    unsigned location = spvc_compiler_get_decoration(
+                        compiler, list[i].id, (SpvDecoration)SpvDecorationLocation);
                     spvc_msl_vertex_attribute attr;
                     spvc_msl_vertex_attribute_init(&attr);
-                    attr.location = list[i].location;
+                    attr.location = location;
                     // format and builtin default to OTHER/Invalid — SPIRV-Cross
                     // will infer the correct format from the SPIR-V type.
                     spvc_compiler_msl_add_vertex_attribute(compiler, &attr);
