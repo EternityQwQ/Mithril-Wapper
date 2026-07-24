@@ -24,6 +24,12 @@
 #define MITHRIL_BACKEND_GETTER  0x0401
 #define MITHRIL_SETTINGS        0x0402
 
+/* GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT is not always defined in the
+ * glcorearb.h we ship; define it here (standard GL value = 0x00000001). */
+#ifndef GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT
+#define GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT 0x00000001
+#endif
+
 /* ---- GPU info (Metal backend) ----
  * On Metal builds the GL_RENDERER string is built from the live MTLDevice so
  * Minecraft's F3 screen and crash reports show real GPU info. The helper is
