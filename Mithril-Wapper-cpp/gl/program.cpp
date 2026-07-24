@@ -153,12 +153,13 @@ void glLinkProgram(GLuint program) {
     }
 
     // Reflect the Metal buffer bindings for every standalone uniform in each
-    // attached shader. SPIRV-Cross assigns each GLSL `uniform T name;` a
-    // [[buffer(N)]] slot in MSL starting at index 30. We store the real slot
-    // so drawing.cpp can bind uniform MTLBuffers to the exact slots the MSL
-    // shader reads from — instead of guessing `30 + unordered_map_index`,
-    // which didn't match SPIRV-Cross's reflection order and caused all
-    // uniforms (ProjMat, ModelViewMat, ...) to be zero → black screen.
+    // attached shader. SPIRV-Cross's MSL backend assigns each GLSL
+    // `uniform T name;` a [[buffer(N)]] slot in MSL. We parse the compiled MSL
+    // to find the real slot and store it in Uniform::location, so drawing.cpp
+    // can bind uniform MTLBuffers to the exact slots the MSL shader reads from
+    // — instead of guessing `30 + unordered_map_index`, which didn't match
+    // SPIRV-Cross's allocation and caused all uniforms (ProjMat, ModelViewMat)
+    // to be zero → vertices collapsed to origin → black screen.
     //
     // We also populate the Program::uniforms map here so glGetUniformLocation
     // returns stable locations instead of allocating synthetic ones on demand.
@@ -175,22 +176,20 @@ void glLinkProgram(GLuint program) {
         }
         for (const auto& ru : reflected) {
             // Merge: if the uniform was already seen (e.g. declared in both
-            // VS and FS), keep the vertex shader's slot (they should match
-            // since both use MSL_UNIFORM_BUFFER_BASE=30 + same reflection
-            // order, but be defensive).
+            // VS and FS), keep the first slot found (they should match since
+            // both stages use the same SPIRV-Cross MSL backend).
             auto it = p->uniforms.find(ru.name);
             if (it == p->uniforms.end()) {
                 mithril::Uniform u{};
                 u.name = ru.name;
-                u.location = (GLint)ru.msl_buffer;   // store real MSL buffer index
+                u.location = (GLint)ru.msl_buffer;   // real MSL buffer index
                 u.offset = (GLint)ru.msl_offset;
                 p->uniforms[ru.name] = u;
                 p->uniformByLocation[u.location] = ru.name;
             } else {
                 // Already recorded (e.g. from the other stage). Ensure the
-                // location is the real MSL slot, not the synthetic one that
-                // glGetUniformLocation may have assigned.
-                if (it->second.location < 30) {
+                // location is the real MSL slot, not a synthetic one.
+                if (it->second.location < 0) {
                     it->second.location = (GLint)ru.msl_buffer;
                     it->second.offset = (GLint)ru.msl_offset;
                 }

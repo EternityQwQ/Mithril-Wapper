@@ -179,13 +179,11 @@ static void prepare_draw(GLenum mode) {
         if (samp) metal_encoder_set_fragment_sampler(u, samp);
     }
 
-    // Bind uniform values. SPIRV-Cross's MSL backend assigns each GLSL
-    // standalone uniform a Metal buffer index starting at 30
-    // (SPVC_COMPILER_OPTION_MSL_UNIFORM_BUFFER_BASE). glLinkProgram reflects
-    // the real [[buffer(N)]] slot for each uniform and stores it in
-    // Uniform::location. We bind each uniform's MTLBuffer to that exact slot.
+    // Bind uniform values. glLinkProgram reflected each uniform's real MSL
+    // [[buffer(N)]] slot (via regex parsing of the compiled MSL) and stored
+    // it in Uniform::location. We bind each uniform's MTLBuffer to that slot.
     //
-    // Previously this used `base + unordered_map_index`, which did NOT match
+    // Previously this used `base + unordered_map_index`, which didn't match
     // SPIRV-Cross's reflection order — ProjMat/ModelViewMat were bound to the
     // wrong slots, so the shader read all-zero matrices and every vertex
     // collapsed to the origin → black screen.
@@ -194,7 +192,7 @@ static void prepare_draw(GLenum mode) {
         for (auto& kv : prog->uniforms) {
             mithril::Uniform& u = kv.second;
             if (u.value.empty()) { idx++; continue; }
-            // u.location is the real MSL [[buffer(N)]] slot (>= 30).
+            // u.location is the real MSL [[buffer(N)]] slot.
             GLint slot = u.location;
             if (slot < 0) { idx++; continue; }
             // Create or update a Metal buffer for this uniform's data.

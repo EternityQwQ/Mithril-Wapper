@@ -235,12 +235,11 @@ bool spirv_to_msl(const std::vector<uint32_t>& spirv, std::string& out, std::str
     // 2.3. iOS 14 is the deployment floor, so MSL 2.3 is always available.
     spvc_compiler_options_set_uint(opts, SPVC_COMPILER_OPTION_MSL_VERSION,
                                    SPVC_MAKE_MSL_VERSION(2, 3, 0));
-    // Place uniform buffers at index 30+ so they don't collide with vertex
-    // attribute buffers (0..15). SPIRV-Cross assigns sequential buffer indices
-    // to each uniform; starting at 30 keeps them clear of vertex descriptor
-    // layouts and the zero-buffer fallback (0..15).
-    spvc_compiler_options_set_uint(opts, SPVC_COMPILER_OPTION_MSL_UNIFORM_BUFFER_BASE,
-                                   30);
+    // NOTE: SPVC_COMPILER_OPTION_MSL_UNIFORM_BUFFER_BASE is not available in
+    // this version of SPIRV-Cross. The MSL backend assigns buffer indices to
+    // standalone uniforms using its default strategy. drawing.cpp reflects
+    // the actual [[buffer(N)]] from the compiled MSL (see shader_reflect_uniforms),
+    // so we don't need to control the base here.
     spvc_compiler_install_compiler_options(compiler, opts);
 
     /*
@@ -416,7 +415,11 @@ bool spirv_to_msl_and_reflect(const std::vector<uint32_t>& spirv, std::string& o
     spvc_compiler_create_compiler_options(compiler, &opts);
     spvc_compiler_options_set_uint(opts, SPVC_COMPILER_OPTION_MSL_VERSION,
                                    SPVC_MAKE_MSL_VERSION(2, 3, 0));
-    spvc_compiler_options_set_uint(opts, SPVC_COMPILER_OPTION_MSL_UNIFORM_BUFFER_BASE, 30);
+    // NOTE: SPVC_COMPILER_OPTION_MSL_UNIFORM_BUFFER_BASE does not exist in this
+    // version of SPIRV-Cross (it was renamed/removed). The MSL backend assigns
+    // buffer indices to standalone uniforms using its default strategy. We
+    // reflect the actual [[buffer(N)]] by parsing the compiled MSL source (see
+    // the post-compile regex below), so we don't need to control the base here.
     spvc_compiler_install_compiler_options(compiler, opts);
 
     // Assign Location decorations to STAGE_INPUT (same as spirv_to_msl).
@@ -494,9 +497,10 @@ bool spirv_to_msl_and_reflect(const std::vector<uint32_t>& spirv, std::string& o
         }
     }
 
-    // Reflect standalone uniforms (SPVC_RESOURCE_TYPE_UNIFORM_BUFFER covers
-    // both GLSL uniform blocks AND standalone uniforms in SPIR-V, since
-    // glslang wraps standalone uniforms in an implicit struct).
+    // First collect the names of standalone uniforms (SPVC_RESOURCE_TYPE_UNIFORM_BUFFER
+    // covers both GLSL uniform blocks AND standalone uniforms in SPIR-V, since
+    // glslang wraps standalone uniforms in an implicit struct). We'll resolve
+    // their Metal buffer indices by parsing the compiled MSL below.
     {
         spvc_resources resources = nullptr;
         if (spvc_compiler_create_shader_resources(compiler, &resources) == SPVC_SUCCESS) {
@@ -507,19 +511,8 @@ bool spirv_to_msl_and_reflect(const std::vector<uint32_t>& spirv, std::string& o
                 for (size_t i = 0; i < count; ++i) {
                     ReflectedUniform ru;
                     ru.name = list[i].name ? list[i].name : "";
-                    // The Metal buffer index is the Binding decoration (which
-                    // SPIRV-Cross's MSL backend maps to [[buffer(N)]] offset by
-                    // MSL_UNIFORM_BUFFER_BASE). Use spvc_compiler_get_decoration
-                    // with Binding; if 0/unset, fall back to the reflection
-                    // index (i) + base.
-                    unsigned binding = spvc_compiler_get_decoration(
-                        compiler, list[i].id, SpvDecorationBinding);
-                    // SPIRV-Cross MSL backend assigns buffer indices starting
-                    // at MSL_UNIFORM_BUFFER_BASE (30) in reflection order.
-                    // The actual index is base + reflection_index.
-                    ru.msl_buffer = 30 + (unsigned)i;
+                    ru.msl_buffer = 0;   // resolved below by parsing MSL
                     ru.msl_offset = 0;
-                    (void)binding;
                     out_uniforms.push_back(std::move(ru));
                 }
             }
@@ -534,6 +527,35 @@ bool spirv_to_msl_and_reflect(const std::vector<uint32_t>& spirv, std::string& o
     }
     out = result ? result : "";
     spvc_context_destroy(ctx);
+
+    // Parse the compiled MSL to find the real [[buffer(N)]] slot for each
+    // reflected uniform name. SPIRV-Cross's MSL backend emits standalone
+    // uniforms as either:
+    //   constant T& name [[buffer(N)]]
+    //   device const T& name [[buffer(N)]]
+    //   T name [[buffer(N)]]           (for push-constant-style)
+    // We match the uniform name followed by [[buffer(N)]] to get the real slot.
+    // This is more reliable than guessing base + index, since the allocation
+    // strategy depends on the SPIRV-Cross version and shader contents.
+    {
+        std::string msl = out;
+        for (auto& ru : out_uniforms) {
+            if (ru.name.empty()) continue;
+            // Escape regex special chars in the name (unlikely but safe).
+            std::string escaped;
+            for (char c : ru.name) {
+                if (std::string("[](){}.*+?^$\\|").find(c) != std::string::npos)
+                    escaped += '\\';
+                escaped += c;
+            }
+            // Match: <name> ... [[buffer(N)]]  (allowing type decl in between)
+            std::regex re(escaped + "[^\\]]*\\[\\[buffer\\((\\d+)\\)\\]\\]");
+            std::smatch m;
+            if (std::regex_search(msl, m, re) && m.size() >= 2) {
+                ru.msl_buffer = (unsigned)std::stoul(m[1].str());
+            }
+        }
+    }
     return true;
 }
 
