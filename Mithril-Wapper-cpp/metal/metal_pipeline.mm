@@ -176,18 +176,18 @@ void* metal_get_or_create_pipeline(GLuint program,
         return nullptr;
     }
 
-    // Vertex descriptor: each enabled attribute reads from its own buffer
-    // at index == attribute location. Additionally, supply default entries
-    // for attribute indices 0..15 that the VAO didn't enable, so Metal doesn't
-    // reject the pipeline with "Vertex attribute N is not defined in the
-    // vertex descriptor." This happens when a shader declares more inputs
-    // than the application binds.
+    // Vertex descriptor: only define attributes the VAO has enabled.
+    // Attributes the shader references but the VAO didn't enable are left
+    // undefined — Metal will report "Vertex attribute N is not defined" at
+    // pipeline creation, which causes that pipeline to be skipped (the draw
+    // is dropped) but does NOT crash. This is preferable to forcing a default
+    // format, which causes type-mismatch crashes ("Cannot convert attribute
+    // from FloatN to intN") when the shader expects an integer attribute.
     //
-    // IMPORTANT: Metal rejects stride==0 with MTLVertexStepFunctionPerVertex
-    // ("Attribute at index N references a buffer at index N that has no
-    // stride"). We use a non-zero stride (16 = sizeof(float4)) for unbound
-    // attributes, and the draw path (drawing.cpp) binds a shared zero-filled
-    // buffer to those slots so the attribute reads vec4(0).
+    // The root cause (shader declaring more inputs than the app binds) is
+    // addressed at the SPIRV-Cross level where we assign sequential locations
+    // to stage inputs — Minecraft's vertex format and shader declarations
+    // are normally in sync, so this only affects edge cases like blit_screen.
     if (pd.vertexFunction) {
         MTLVertexDescriptor* vd = [MTLVertexDescriptor vertexDescriptor];
         for (int i = 0; i < attrib_count; ++i) {
@@ -202,16 +202,6 @@ void* metal_get_or_create_pipeline(GLuint program,
             NSUInteger stride = attribs[i].stride > 0 ? attribs[i].stride : 16;
             vd.layouts[loc].stride       = stride;
             vd.layouts[loc].stepFunction = MTLVertexStepFunctionPerVertex;
-        }
-        // Fill in defaults for any attribute index 0..15 not set by the VAO.
-        for (int loc = 0; loc < 16; ++loc) {
-            if (vd.attributes[loc].format == MTLVertexFormatInvalid) {
-                vd.attributes[loc].format      = MTLVertexFormatFloat4;
-                vd.attributes[loc].bufferIndex = loc;
-                vd.attributes[loc].offset      = 0;
-                vd.layouts[loc].stride       = 16;  // sizeof(float4), non-zero
-                vd.layouts[loc].stepFunction = MTLVertexStepFunctionPerVertex;
-            }
         }
         pd.vertexDescriptor = vd;
     }

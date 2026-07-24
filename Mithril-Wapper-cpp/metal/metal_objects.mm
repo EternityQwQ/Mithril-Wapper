@@ -43,6 +43,7 @@ static MTLPixelFormat gl_internal_to_mtl(GLenum f) {
         case GL_RGB16F:            return MTLPixelFormatRGBA16Float;
         case GL_RGBA32F:           return MTLPixelFormatRGBA32Float;
         case GL_RGB32F:            return MTLPixelFormatRGBA32Float;
+        // Sized depth/stencil formats
         case GL_DEPTH_COMPONENT16: return MTLPixelFormatDepth16Unorm;
         case GL_DEPTH_COMPONENT24: return MTLPixelFormatDepth32Float;
         case GL_DEPTH_COMPONENT32: return MTLPixelFormatDepth32Float;
@@ -50,6 +51,9 @@ static MTLPixelFormat gl_internal_to_mtl(GLenum f) {
         case GL_DEPTH24_STENCIL8:  return MTLPixelFormatDepth32Float_Stencil8;
         case GL_DEPTH32F_STENCIL8: return MTLPixelFormatDepth32Float_Stencil8;
         case GL_STENCIL_INDEX8:    return MTLPixelFormatStencil8;
+        // Unsized depth/stencil formats (MC may pass these as internalFormat)
+        case GL_DEPTH_COMPONENT:   return MTLPixelFormatDepth32Float;
+        case GL_DEPTH_STENCIL:     return MTLPixelFormatDepth32Float_Stencil8;
         case GL_R8UI:              return MTLPixelFormatR8Uint;
         case GL_R8I:               return MTLPixelFormatR8Sint;
         case GL_RG8UI:             return MTLPixelFormatRG8Uint;
@@ -60,6 +64,8 @@ static MTLPixelFormat gl_internal_to_mtl(GLenum f) {
         case GL_RGBA16UI:          return MTLPixelFormatRGBA16Uint;
         case GL_R32UI:             return MTLPixelFormatR32Uint;
         case GL_RGBA32UI:          return MTLPixelFormatRGBA32Uint;
+        // BGRA8 (used by some MC texture paths on Apple platforms)
+        case 0x80E1:               return MTLPixelFormatBGRA8Unorm; // GL_BGRA8_EXT
         default:                   return MTLPixelFormatRGBA8Unorm;
     }
 }
