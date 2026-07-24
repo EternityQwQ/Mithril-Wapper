@@ -176,18 +176,16 @@ void* metal_get_or_create_pipeline(GLuint program,
         return nullptr;
     }
 
-    // Vertex descriptor: only define attributes the VAO has enabled.
-    // Attributes the shader references but the VAO didn't enable are left
-    // undefined — Metal will report "Vertex attribute N is not defined" at
-    // pipeline creation, which causes that pipeline to be skipped (the draw
-    // is dropped) but does NOT crash. This is preferable to forcing a default
-    // format, which causes type-mismatch crashes ("Cannot convert attribute
-    // from FloatN to intN") when the shader expects an integer attribute.
+    // Vertex descriptor: define attributes the VAO has enabled. Then reflect
+    // the compiled vertex function to find any [[attribute(N)]] it references
+    // that the VAO didn't cover, and supply matching default entries for those
+    // so Metal doesn't reject the pipeline with "Vertex attribute N is not
+    // defined in the vertex descriptor."
     //
-    // The root cause (shader declaring more inputs than the app binds) is
-    // addressed at the SPIRV-Cross level where we assign sequential locations
-    // to stage inputs — Minecraft's vertex format and shader declarations
-    // are normally in sync, so this only affects edge cases like blit_screen.
+    // We use [pd.vertexFunction stageInputOutputAttributesWithError:] to get
+    // the exact MTLVertexFormat each attribute expects, so there are no type
+    // mismatches (the earlier attempt used a fixed Float4 which broke int
+    // attributes). A shared zero-filled buffer is bound at draw time.
     if (pd.vertexFunction) {
         MTLVertexDescriptor* vd = [MTLVertexDescriptor vertexDescriptor];
         for (int i = 0; i < attrib_count; ++i) {
@@ -203,6 +201,29 @@ void* metal_get_or_create_pipeline(GLuint program,
             vd.layouts[loc].stride       = stride;
             vd.layouts[loc].stepFunction = MTLVertexStepFunctionPerVertex;
         }
+
+        // Reflect the vertex function's stage_in attributes. The returned
+        // array contains MTLAttributeDescriptor objects with .attributeIndex
+        // and .format. For any index the VAO didn't set, add a default entry
+        // using the reflected format so types always match.
+        NSArray<MTLAttributeDescriptor*>* stageAttrs =
+            [pd.vertexFunction stageInputOutputAttributesWithError:nil];
+        if (stageAttrs) {
+            for (MTLAttributeDescriptor* ad in stageAttrs) {
+                NSUInteger idx = ad.attributeIndex;
+                if (idx >= 16) continue;  // safety bound
+                if (vd.attributes[idx].format != MTLVertexFormatInvalid) continue; // already set by VAO
+                // Use the shader-declared format. If it's Invalid (shouldn't
+                // happen for stage_in members), skip.
+                if (ad.format == MTLVertexFormatInvalid) continue;
+                vd.attributes[idx].format      = ad.format;
+                vd.attributes[idx].bufferIndex = idx;
+                vd.attributes[idx].offset      = 0;
+                vd.layouts[idx].stride       = 16;  // non-zero, sizeof(float4)
+                vd.layouts[idx].stepFunction = MTLVertexStepFunctionPerVertex;
+            }
+        }
+
         pd.vertexDescriptor = vd;
     }
 
