@@ -162,8 +162,49 @@ void glGetPointerv(GLenum pname, void** params) {
     if (params) *params = nullptr;
 }
 
-void glGetTexLevelParameteriv(GLenum, GLint, GLenum, GLint* params) {
+void glGetTexLevelParameteriv(GLenum target, GLint level, GLenum pname, GLint* params) {
+    MITHRIL_ENSURE_INIT();
     if (params) *params = 0;
+    if (level != 0) return; // only level 0 supported
+
+    // Proxy texture queries: return the dimensions recorded by the last
+    // glTexImage2D(GL_PROXY_TEXTURE_2D, ...) call. If the combo was
+    // unsupported, valid=false and width/height are 0.
+    if (target == GL_PROXY_TEXTURE_2D) {
+        switch (pname) {
+            case GL_TEXTURE_WIDTH:
+                *params = g_state->proxyTexture2D.valid
+                        ? g_state->proxyTexture2D.width : 0;
+                break;
+            case GL_TEXTURE_HEIGHT:
+                *params = g_state->proxyTexture2D.valid
+                        ? g_state->proxyTexture2D.height : 0;
+                break;
+            case GL_TEXTURE_INTERNAL_FORMAT:
+                *params = g_state->proxyTexture2D.valid
+                        ? g_state->proxyTexture2D.internalFormat : 0;
+                break;
+            default:
+                *params = 0;
+                break;
+        }
+        return;
+    }
+
+    // Real texture queries: return the tracked dimensions for level 0.
+    mithril::Texture* t = nullptr;
+    GLuint unit = g_state->activeTextureUnit;
+    if (unit < mithril::kMaxTextureUnits) {
+        t = mithril::state_get_texture(g_state->boundTextures[unit]);
+    }
+    if (!t) return;
+    switch (pname) {
+        case GL_TEXTURE_WIDTH:           *params = t->width; break;
+        case GL_TEXTURE_HEIGHT:          *params = t->height; break;
+        case GL_TEXTURE_DEPTH:           *params = t->depth; break;
+        case GL_TEXTURE_INTERNAL_FORMAT: *params = t->internalFormat; break;
+        default:                         *params = 0; break;
+    }
 }
 
 void glGetTexParameteriv(GLenum, GLenum, GLint* params) { if (params) *params = 0; }

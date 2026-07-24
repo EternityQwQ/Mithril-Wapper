@@ -56,6 +56,28 @@ void glTexImage2D(GLenum target, GLint level, GLint internalFormat,
                   GLenum format, GLenum type, const void* pixels) {
     MITHRIL_ENSURE_INIT();
     if (border != 0) { mithril::state_set_error(GL_INVALID_VALUE); return; }
+
+    // GL_PROXY_TEXTURE_2D: no real texture is created. Just record the
+    // requested dimensions so glGetTexLevelParameteriv can report them.
+    // Minecraft probes max texture size this way (GL_PROXY_TEXTURE_2D with
+    // progressively larger sizes until the query returns 0).
+    if (target == GL_PROXY_TEXTURE_2D) {
+        // Accept the size if it's within our reported GL_MAX_TEXTURE_SIZE.
+        // A size of 0 means "unsupported" per the GL spec.
+        GLint maxSize = 16384; // matches GL_MAX_TEXTURE_SIZE in getter.cpp
+        if (width > 0 && height > 0 && width <= maxSize && height <= maxSize) {
+            g_state->proxyTexture2D.width  = width;
+            g_state->proxyTexture2D.height = height;
+            g_state->proxyTexture2D.internalFormat = internalFormat;
+            g_state->proxyTexture2D.valid = true;
+        } else {
+            g_state->proxyTexture2D.valid = false;
+            g_state->proxyTexture2D.width = 0;
+            g_state->proxyTexture2D.height = 0;
+        }
+        return;
+    }
+
     mithril::Texture* t = bound_texture_for_unit();
     if (!t) return;
     if (level == 0) {

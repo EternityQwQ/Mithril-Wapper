@@ -11,6 +11,27 @@
 #include <KHR/khrplatform.h>
 #include "glcorearb.h"
 
+/*
+ * Texture level parameter constants used by glGetTexLevelParameteriv and
+ * glTexImage2D(GL_PROXY_TEXTURE_2D). These are standard GL values but
+ * missing from our minimal glcorearb.h.
+ */
+#ifndef GL_PROXY_TEXTURE_2D
+#define GL_PROXY_TEXTURE_2D          0x8063
+#endif
+#ifndef GL_TEXTURE_WIDTH
+#define GL_TEXTURE_WIDTH             0x1000
+#endif
+#ifndef GL_TEXTURE_HEIGHT
+#define GL_TEXTURE_HEIGHT            0x1001
+#endif
+#ifndef GL_TEXTURE_DEPTH
+#define GL_TEXTURE_DEPTH             0x8071
+#endif
+#ifndef GL_TEXTURE_INTERNAL_FORMAT
+#define GL_TEXTURE_INTERNAL_FORMAT   0x1003
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif

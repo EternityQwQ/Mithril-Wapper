@@ -255,6 +255,21 @@ struct GLState {
 
     // Name allocator
     GLuint nextName = 1;
+
+    /*
+     * Proxy texture state. glTexImage2D(GL_PROXY_TEXTURE_2D, ...) doesn't
+     * create a real texture; it just validates the format/size combo. The
+     * result is queried via glGetTexLevelParameteriv(GL_PROXY_TEXTURE_2D,
+     * 0, GL_TEXTURE_WIDTH, &w). If the combo is unsupported, w == 0.
+     * Minecraft uses this to probe the max texture size.
+     */
+    struct ProxyTextureState {
+        GLint width = 0;
+        GLint height = 0;
+        GLint depth = 0;
+        GLint internalFormat = 0;
+        bool valid = false;
+    } proxyTexture2D;
 };
 
 extern GLState* g_state;
