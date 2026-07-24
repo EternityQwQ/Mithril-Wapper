@@ -636,6 +636,8 @@ GLAPI void GLAPIENTRY glTexImage3D(GLenum target, GLint level, GLint internalFor
 GLAPI void GLAPIENTRY glTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLenum type, const void* pixels);
 GLAPI void GLAPIENTRY glTexSubImage3D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type, const void* pixels);
 GLAPI void GLAPIENTRY glTexImage2DMultisample(GLenum target, GLsizei samples, GLenum internalformat, GLsizei width, GLsizei height, GLboolean fixedsamplelocations);
+GLAPI void GLAPIENTRY glTexStorage2D(GLenum target, GLsizei levels, GLenum internalFormat, GLsizei width, GLsizei height);
+GLAPI void GLAPIENTRY glTexStorage3D(GLenum target, GLsizei levels, GLenum internalFormat, GLsizei width, GLsizei height, GLsizei depth);
 GLAPI void GLAPIENTRY glTexParameterf(GLenum target, GLenum pname, GLfloat param);
 GLAPI void GLAPIENTRY glTexParameteri(GLenum target, GLenum pname, GLint param);
 GLAPI void GLAPIENTRY glTexParameterfv(GLenum target, GLenum pname, const GLfloat* params);

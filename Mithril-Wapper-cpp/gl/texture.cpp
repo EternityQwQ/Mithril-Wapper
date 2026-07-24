@@ -119,6 +119,50 @@ void glTexImage3D(GLenum target, GLint level, GLint internalFormat,
     }
 }
 
+/*
+ * glTexStorage2D / glTexStorage3D: allocate immutable storage for a texture.
+ * Minecraft 1.21 uses these (rather than glTexImage2D) to create framebuffer
+ * attachments, especially depth/stencil textures. Previously these were
+ * missing, so the texture's internalFormat was never set — when the texture
+ * was later used as a depth attachment, gl_internal_to_mtl() fell through to
+ * the default case (MTLPixelFormatRGBA8Unorm = 70 on iOS), which Metal rejects
+ * as a depth attachment pixel format.
+ *
+ * We set the GL-level metadata (internalFormat, dimensions, levels) and create
+ * the Metal texture with the correct pixel format up front. No pixel data is
+ * uploaded (immutable storage starts uninitialised, like glTexImage2D with
+ * pixels=NULL).
+ */
+void glTexStorage2D(GLenum target, GLsizei levels, GLenum internalFormat,
+                    GLsizei width, GLsizei height) {
+    MITHRIL_ENSURE_INIT();
+    mithril::Texture* t = bound_texture_for_unit();
+    if (!t || levels <= 0) return;
+    t->internalFormat = internalFormat;
+    t->width  = width;
+    t->height = height;
+    t->depth  = 1;
+    t->levels = levels;
+
+    metal_get_or_create_texture(t->id, width, height, 1, levels,
+                                internalFormat, target, 1);
+}
+
+void glTexStorage3D(GLenum target, GLsizei levels, GLenum internalFormat,
+                    GLsizei width, GLsizei height, GLsizei depth) {
+    MITHRIL_ENSURE_INIT();
+    mithril::Texture* t = bound_texture_for_unit();
+    if (!t || levels <= 0) return;
+    t->internalFormat = internalFormat;
+    t->width  = width;
+    t->height = height;
+    t->depth  = depth;
+    t->levels = levels;
+
+    metal_get_or_create_texture(t->id, width, height, depth, levels,
+                                internalFormat, target, 1);
+}
+
 void glTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset,
                      GLsizei width, GLsizei height,
                      GLenum format, GLenum type, const void* pixels) {
