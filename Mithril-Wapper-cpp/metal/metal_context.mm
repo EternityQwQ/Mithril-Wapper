@@ -177,6 +177,12 @@ void metal_encoder_set_vertex_buffer(int slot, void* buffer, int offset) {
     [g_enc setVertexBuffer:buf offset:(NSUInteger)offset atIndex:(NSUInteger)slot];
 }
 
+void metal_encoder_set_fragment_buffer(int slot, void* buffer, int offset) {
+    if (!g_enc || !buffer) return;
+    id<MTLBuffer> buf = (__bridge id<MTLBuffer>)buffer;
+    [g_enc setFragmentBuffer:buf offset:(NSUInteger)offset atIndex:(NSUInteger)slot];
+}
+
 void metal_encoder_set_vertex_texture(int slot, void* texture) {
     if (!g_enc || !texture) return;
     id<MTLTexture> tex = (__bridge id<MTLTexture>)texture;

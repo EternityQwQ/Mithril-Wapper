@@ -235,6 +235,12 @@ bool spirv_to_msl(const std::vector<uint32_t>& spirv, std::string& out, std::str
     // 2.3. iOS 14 is the deployment floor, so MSL 2.3 is always available.
     spvc_compiler_options_set_uint(opts, SPVC_COMPILER_OPTION_MSL_VERSION,
                                    SPVC_MAKE_MSL_VERSION(2, 3, 0));
+    // Place uniform buffers at index 30+ so they don't collide with vertex
+    // attribute buffers (0..15). SPIRV-Cross assigns sequential buffer indices
+    // to each uniform; starting at 30 keeps them clear of vertex descriptor
+    // layouts and the zero-buffer fallback (0..15).
+    spvc_compiler_options_set_uint(opts, SPVC_COMPILER_OPTION_MSL_UNIFORM_BUFFER_BASE,
+                                   30);
     spvc_compiler_install_compiler_options(compiler, opts);
 
     /*

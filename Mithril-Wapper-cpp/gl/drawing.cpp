@@ -174,6 +174,31 @@ static void prepare_draw(GLenum mode) {
         if (tex)  metal_encoder_set_fragment_texture(u, tex);
         if (samp) metal_encoder_set_fragment_sampler(u, samp);
     }
+
+    // Bind uniform values. SPIRV-Cross assigns each GLSL uniform a Metal
+    // buffer slot starting at 30 (SPVC_COMPILER_OPTION_MSL_UNIFORM_BUFFER_BASE).
+    // We create/update a small MTLBuffer per uniform and bind it to both
+    // vertex and fragment stages. Without this, ProjMat/ModelViewMat are
+    // all zeros and every vertex collapses to the origin → black screen.
+    {
+        GLuint base = 30;
+        GLuint idx = 0;
+        for (auto& kv : prog->uniforms) {
+            mithril::Uniform& u = kv.second;
+            if (u.value.empty()) { idx++; continue; }
+            // Create or update a Metal buffer for this uniform's data.
+            // Use a stable name derived from the program id + uniform index.
+            GLuint uname = prog->id * 10000 + idx;
+            size_t sz = u.value.size() * sizeof(float);
+            void* ubuf = metal_get_or_create_buffer(uname, u.value.data(), sz);
+            if (ubuf) {
+                GLuint slot = base + idx;
+                metal_encoder_set_vertex_buffer(slot, ubuf, 0);
+                metal_encoder_set_fragment_buffer(slot, ubuf, 0);
+            }
+            idx++;
+        }
+    }
 }
 
 static void end_draw(void) {

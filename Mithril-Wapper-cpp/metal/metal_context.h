@@ -51,6 +51,7 @@ void metal_encoder_set_pipeline(void* pipeline);
 void metal_encoder_set_viewport(int x, int y, int w, int h, double znear, double zfar);
 void metal_encoder_set_scissor(int x, int y, int w, int h);
 void metal_encoder_set_vertex_buffer(int slot, void* buffer, int offset);
+void metal_encoder_set_fragment_buffer(int slot, void* buffer, int offset);
 void metal_encoder_set_vertex_texture(int slot, void* texture);
 void metal_encoder_set_vertex_sampler(int slot, void* sampler);
 void metal_encoder_set_fragment_texture(int slot, void* texture);
