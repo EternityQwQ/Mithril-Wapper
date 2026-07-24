@@ -116,7 +116,10 @@ void metal_commit(void) {
     g_pass_active = NO;
     if (g_cmd) {
         [g_cmd commit];
-        [g_cmd waitUntilCompleted];
+        // Don't waitUntilCompleted — Metal command buffers execute in order,
+        // and blocking here serializes CPU/GPU, destroying performance.
+        // eglSwapBuffers presents the drawable after commit; the GPU will
+        // finish the encoded work before presenting.
         g_cmd = nil;
     }
 }

@@ -177,8 +177,12 @@ static void prepare_draw(GLenum mode) {
 }
 
 static void end_draw(void) {
+    // End the render pass but DON'T commit the command buffer here.
+    // The command buffer is committed once per frame in eglSwapBuffers,
+    // which presents the drawable. Committing per-draw would flush the
+    // Metal pipeline hundreds of times per frame, causing severe perf
+    // loss and drawable/present timing issues (black screen).
     metal_end_render_pass();
-    metal_commit();
 }
 
 static int index_type_to_int(GLenum type) {
