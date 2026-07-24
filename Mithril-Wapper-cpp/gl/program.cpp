@@ -71,8 +71,15 @@ void glCompileShader(GLuint shader) {
     if (ok) {
         s->compiled = true;
         s->msl = std::move(msl);
+        MITHRIL_LOG_INFO("shader", "Compiled shader %u (%s) -> %zu bytes MSL",
+                         shader,
+                         s->type == GL_VERTEX_SHADER ? "vertex" :
+                         s->type == GL_FRAGMENT_SHADER ? "fragment" : "other",
+                         s->msl.size());
     } else {
         s->compiled = false;
+        MITHRIL_LOG_ERROR("shader", "Failed to compile shader %u: %s",
+                          shader, info.c_str());
     }
 }
 
@@ -117,10 +124,13 @@ void glLinkProgram(GLuint program) {
     if (missing || (p->vertexMSL.empty() && p->fragmentMSL.empty())) {
         p->linked = false;
         p->infoLog = "link failed: a required stage was missing or uncompiled";
+        MITHRIL_LOG_ERROR("program", "Link failed for program %u: missing stage", program);
         return;
     }
     p->linked = true;
     p->infoLog.clear();
+    MITHRIL_LOG_INFO("program", "Linked program %u (VS=%zu bytes, FS=%zu bytes)",
+                     program, p->vertexMSL.size(), p->fragmentMSL.size());
 }
 
 void glUseProgram(GLuint program) {

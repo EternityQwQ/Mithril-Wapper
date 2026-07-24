@@ -21,6 +21,23 @@ void proc_init(void) {
     metal_init();
 
     MITHRIL_LOG_INFO("init", "Mithril-Wapper initialised (Metal backend)");
+
+#if MITHRIL_METAL
+    // Log renderer info at startup so the GPU identity is visible in the
+    // launch log (mirrors MobileGlues' LOG_V("Initializing %s ...") pattern).
+    // mithril_get_gpu_renderer_string() queries the live MTLDevice and caches
+    // the result, so the same string later appears in GL_RENDERER queries.
+    extern "C" const char* mithril_get_gpu_renderer_string(void);
+    const char* gpu_info = mithril_get_gpu_renderer_string();
+    MITHRIL_LOG_INFO("renderer", "GPU: %s", gpu_info ? gpu_info : "(unknown)");
+
+    extern "C" void* metal_device(void);
+    if (void* dev = metal_device(); dev) {
+        MITHRIL_LOG_INFO("renderer", "Metal device available: yes");
+    } else {
+        MITHRIL_LOG_WARN("renderer", "Metal device available: no");
+    }
+#endif
 }
 
 } // extern "C"

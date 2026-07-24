@@ -67,8 +67,13 @@ bool glsl_to_spirv(GLenum gl_stage, const std::string& src,
     shader.setEnvClient(glslang::EShClientVulkan, glslang::EShTargetVulkan_1_0);
     shader.setEnvTarget(glslang::EShTargetSpv, glslang::EShTargetSpv_1_0);
 
+    // Use EShMsgSpvRules WITHOUT EShMsgVulkanRules: Vulkan rules require
+    // explicit layout(location=N) on every user-defined in/out variable, but
+    // desktop GLSL 3.30 Core Profile shaders (e.g. Minecraft's blit_screen)
+    // rely on implicit/API-assigned locations. Without VulkanRules, glslang
+    // auto-assigns locations and still emits valid SPIR-V for spirv-cross.
     const EShMessages messages = static_cast<EShMessages>(
-        EShMsgDefault | EShMsgVulkanRules | EShMsgSpvRules);
+        EShMsgDefault | EShMsgSpvRules);
 
     const int defaultVersion = 330; // desktop core
     if (!shader.parse(GetDefaultResources(), defaultVersion, false, messages)) {
@@ -141,17 +146,42 @@ bool spirv_to_msl(const std::vector<uint32_t>& spirv, std::string& out, std::str
 
 bool shader_translate(GLenum gl_stage, const std::string& glsl_source,
                       std::string& out_msl, std::string& out_info_log) {
+    const char* stage_name =
+        gl_stage == GL_VERTEX_SHADER ? "vertex" :
+        gl_stage == GL_FRAGMENT_SHADER ? "fragment" : "other";
+
     uint64_t key = fnv1a(glsl_source) ^ (uint64_t)gl_stage * 0x9E3779B97F4A7C15ULL;
     {
         std::lock_guard<std::mutex> lk(cache().mu);
         auto it = cache().entries.find(key);
-        if (it != cache().entries.end()) { out_msl = it->second; return true; }
+        if (it != cache().entries.end()) {
+            out_msl = it->second;
+            MITHRIL_LOG_DEBUG("shader", "Cache hit for %s shader (hash %016llx)",
+                              stage_name, (unsigned long long)key);
+            return true;
+        }
     }
 
-    std::vector<uint32_t> spirv;
-    if (!glsl_to_spirv(gl_stage, glsl_source, spirv, out_info_log)) return false;
+    MITHRIL_LOG_INFO("shader", "Translating %s shader (%zu bytes GLSL)",
+                     stage_name, glsl_source.size());
 
-    if (!spirv_to_msl(spirv, out_msl, out_info_log)) return false;
+    std::vector<uint32_t> spirv;
+    if (!glsl_to_spirv(gl_stage, glsl_source, spirv, out_info_log)) {
+        MITHRIL_LOG_ERROR("shader", "GLSL->SPIR-V failed for %s shader: %s",
+                          stage_name, out_info_log.c_str());
+        return false;
+    }
+
+    MITHRIL_LOG_DEBUG("shader", "SPIR-V generated: %zu words", spirv.size());
+
+    if (!spirv_to_msl(spirv, out_msl, out_info_log)) {
+        MITHRIL_LOG_ERROR("shader", "SPIR-V->MSL failed for %s shader: %s",
+                          stage_name, out_info_log.c_str());
+        return false;
+    }
+
+    MITHRIL_LOG_INFO("shader", "Translated %s shader: %zu bytes MSL",
+                     stage_name, out_msl.size());
 
     std::lock_guard<std::mutex> lk(cache().mu);
     cache().entries[key] = out_msl;
