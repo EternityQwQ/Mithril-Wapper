@@ -246,10 +246,13 @@ bool spirv_to_msl(const std::vector<uint32_t>& spirv, std::string& out, std::str
      * client), the stage_in struct members will lack [[attribute(N)]]
      * and Metal will reject the vertex function.
      *
-     * We enumerate all STAGE_INPUT resources and assign sequential
-     * locations (0, 1, 2, ...) to any that lack a Location decoration.
-     * This matches the vertex descriptor layout in metal_pipeline.mm
-     * where attribute index == location.
+     * For vertex shaders: STAGE_INPUT = vertex attributes. Assign
+     * sequential locations (0, 1, 2, ...) to match the vertex descriptor.
+     *
+     * For fragment shaders: STAGE_INPUT = varying inputs from vertex
+     * stage. These must match the vertex STAGE_OUTPUT locations, so we
+     * sort by variable name (same as STAGE_OUTPUT below) to guarantee
+     * both stages assign the same location to the same varying.
      */
     {
         spvc_resources resources = nullptr;
@@ -259,18 +262,47 @@ bool spirv_to_msl(const std::vector<uint32_t>& spirv, std::string& out, std::str
             if (spvc_resources_get_resource_list_for_type(resources,
                     SPVC_RESOURCE_TYPE_STAGE_INPUT, &list, &count) == SPVC_SUCCESS) {
                 const unsigned SpvDecorationLocation = 30;
-                unsigned next_location = 0;
-                for (size_t i = 0; i < count; ++i) {
-                    unsigned existing = spvc_compiler_get_decoration(
-                        compiler, list[i].id, (SpvDecoration)SpvDecorationLocation);
-                    if (existing == 0) {
-                        // No location assigned yet — assign one sequentially.
-                        spvc_compiler_set_decoration(
-                            compiler, list[i].id,
-                            (SpvDecoration)SpvDecorationLocation, next_location);
-                        next_location++;
-                    } else {
-                        next_location = existing + 1;
+                // Determine the execution model to decide whether to sort
+                // by name (fragment: varyings must match vertex outputs) or
+                // use declaration order (vertex: attributes match VAO).
+                SpvExecutionModel model = spvc_compiler_get_execution_model(compiler);
+                if (model == SpvExecutionModelFragment) {
+                    // Fragment: sort by name to match vertex STAGE_OUTPUT.
+                    std::vector<std::pair<std::string, SpvId>> vars;
+                    vars.reserve(count);
+                    for (size_t i = 0; i < count; ++i) {
+                        const char* nm = list[i].name ? list[i].name : "";
+                        vars.push_back({nm, list[i].id});
+                    }
+                    std::sort(vars.begin(), vars.end(),
+                        [](const auto& a, const auto& b) { return a.first < b.first; });
+                    unsigned next_location = 0;
+                    for (const auto& v : vars) {
+                        unsigned existing = spvc_compiler_get_decoration(
+                            compiler, v.second, (SpvDecoration)SpvDecorationLocation);
+                        if (existing == 0) {
+                            spvc_compiler_set_decoration(
+                                compiler, v.second,
+                                (SpvDecoration)SpvDecorationLocation, next_location);
+                            next_location++;
+                        } else {
+                            next_location = existing + 1;
+                        }
+                    }
+                } else {
+                    // Vertex (or other): declaration order for attributes.
+                    unsigned next_location = 0;
+                    for (size_t i = 0; i < count; ++i) {
+                        unsigned existing = spvc_compiler_get_decoration(
+                            compiler, list[i].id, (SpvDecoration)SpvDecorationLocation);
+                        if (existing == 0) {
+                            spvc_compiler_set_decoration(
+                                compiler, list[i].id,
+                                (SpvDecoration)SpvDecorationLocation, next_location);
+                            next_location++;
+                        } else {
+                            next_location = existing + 1;
+                        }
                     }
                 }
             }
