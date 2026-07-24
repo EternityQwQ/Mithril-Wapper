@@ -93,6 +93,24 @@ static NSUInteger mtl_texture_usage(GLenum target) {
 
 extern "C" {
 
+/*
+ * Shared zero-filled buffer (16 bytes = sizeof(float4)) used to bind to
+ * vertex attribute slots that the shader references but the application
+ * didn't bind. The vertex descriptor gives these slots a stride of 16 and
+ * format Float4; binding this zero buffer makes the attribute read vec4(0)
+ * for every vertex, which is safe.
+ */
+static id<MTLBuffer> s_zero_vertex_buffer = nil;
+void* metal_get_zero_buffer(void) {
+    if (s_zero_vertex_buffer) return (__bridge void*)s_zero_vertex_buffer;
+    id<MTLDevice> dev = (__bridge id<MTLDevice>)metal_device();
+    if (!dev) return nullptr;
+    static const float zeros[4] = {0, 0, 0, 0};
+    s_zero_vertex_buffer = [dev newBufferWithBytes:zeros length:16
+                                           options:MTLResourceStorageModeShared];
+    return (__bridge void*)s_zero_vertex_buffer;
+}
+
 void* metal_get_or_create_buffer(GLuint name, const void* data, size_t size) {
     id<MTLDevice> dev = (__bridge id<MTLDevice>)metal_device();
     if (!dev || name == 0) return nullptr;

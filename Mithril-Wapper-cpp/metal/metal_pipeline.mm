@@ -177,13 +177,17 @@ void* metal_get_or_create_pipeline(GLuint program,
     }
 
     // Vertex descriptor: each enabled attribute reads from its own buffer
-    // at index == attribute location. Additionally, supply default (zero-stride)
-    // entries for attribute indices 0..7 that the VAO didn't enable, so Metal
-    // doesn't reject the pipeline with "Vertex attribute N is not defined in
-    // the vertex descriptor." This happens when a shader declares more inputs
-    // than the application binds (e.g. Minecraft's blit_screen declares 4
-    // attributes but some draw paths only bind 3). A zero-stride layout makes
-    // Metal read a constant value (all zeros) for the missing attribute.
+    // at index == attribute location. Additionally, supply default entries
+    // for attribute indices 0..15 that the VAO didn't enable, so Metal doesn't
+    // reject the pipeline with "Vertex attribute N is not defined in the
+    // vertex descriptor." This happens when a shader declares more inputs
+    // than the application binds.
+    //
+    // IMPORTANT: Metal rejects stride==0 with MTLVertexStepFunctionPerVertex
+    // ("Attribute at index N references a buffer at index N that has no
+    // stride"). We use a non-zero stride (16 = sizeof(float4)) for unbound
+    // attributes, and the draw path (drawing.cpp) binds a shared zero-filled
+    // buffer to those slots so the attribute reads vec4(0).
     if (pd.vertexFunction) {
         MTLVertexDescriptor* vd = [MTLVertexDescriptor vertexDescriptor];
         for (int i = 0; i < attrib_count; ++i) {
@@ -195,23 +199,17 @@ void* metal_get_or_create_pipeline(GLuint program,
             vd.attributes[loc].format      = fmt;
             vd.attributes[loc].bufferIndex = loc;
             vd.attributes[loc].offset      = attribs[i].offset;
-            NSUInteger stride = attribs[i].stride > 0 ? attribs[i].stride : 0;
+            NSUInteger stride = attribs[i].stride > 0 ? attribs[i].stride : 16;
             vd.layouts[loc].stride       = stride;
-            vd.layouts[loc].stepFunction = attribs[i].buffer_name && attribs[i].stride > 0
-                                             ? MTLVertexStepFunctionPerVertex
-                                             : MTLVertexStepFunctionPerVertex;
+            vd.layouts[loc].stepFunction = MTLVertexStepFunctionPerVertex;
         }
-        // Fill in zero-stride defaults for any attribute index 0..7 not set
-        // by the VAO. Zero-stride means all vertices read the same value
-        // (zeros from an unbound buffer), which is safe and prevents Metal
-        // pipeline validation failures when the shader references an
-        // attribute the app didn't bind.
-        for (int loc = 0; loc < 8; ++loc) {
+        // Fill in defaults for any attribute index 0..15 not set by the VAO.
+        for (int loc = 0; loc < 16; ++loc) {
             if (vd.attributes[loc].format == MTLVertexFormatInvalid) {
                 vd.attributes[loc].format      = MTLVertexFormatFloat4;
                 vd.attributes[loc].bufferIndex = loc;
                 vd.attributes[loc].offset      = 0;
-                vd.layouts[loc].stride       = 0;
+                vd.layouts[loc].stride       = 16;  // sizeof(float4), non-zero
                 vd.layouts[loc].stepFunction = MTLVertexStepFunctionPerVertex;
             }
         }

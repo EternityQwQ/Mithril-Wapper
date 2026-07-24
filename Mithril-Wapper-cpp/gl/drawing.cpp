@@ -48,11 +48,20 @@ static void prepare_draw(GLenum mode) {
     // For FBO 0 (EGL default framebuffer), the depth texture is a raw
     // MTLTexture created by the EGL layer (Depth32Float_Stencil8), not tracked
     // in the GL texture table. We query its pixel format directly from Metal.
-    // For user FBOs, we look up the GL texture's internalFormat.
+    // For user FBOs, prefer querying the actual MTLTexture's pixel format
+    // (more reliable than the GL internalFormat, which may not have been set
+    // if the texture was created via a code path that doesn't track it).
     int depth_format = 0;
     if (fbo && fbo->depth.texture) {
-        mithril::Texture* dt = mithril::state_get_texture(fbo->depth.texture);
-        if (dt) depth_format = metal_pixel_format_for_gl((GLenum)dt->internalFormat);
+        // Try the Metal texture first — it always reflects the true format.
+        void* depth_mtl = metal_get_texture(fbo->depth.texture);
+        if (depth_mtl) {
+            depth_format = metal_texture_pixel_format(depth_mtl);
+        } else {
+            // Fall back to the GL internalFormat if no Metal texture exists yet.
+            mithril::Texture* dt = mithril::state_get_texture(fbo->depth.texture);
+            if (dt) depth_format = metal_pixel_format_for_gl((GLenum)dt->internalFormat);
+        }
     } else if (depth_tex) {
         // EGL default framebuffer: query the actual MTLTexture pixel format.
         depth_format = metal_texture_pixel_format(depth_tex);
@@ -125,12 +134,26 @@ static void prepare_draw(GLenum mode) {
     }
 
     // Bind vertex buffers — one MTLBuffer per enabled attribute, at index
-    // == attribute location (matches the vertex descriptor layout).
+    // == attribute location (matches the vertex descriptor layout). For
+    // attribute slots the VAO didn't enable, bind the shared zero buffer so
+    // the vertex descriptor's default entries (stride=16, Float4) read
+    // vec4(0) instead of dereferencing unbound memory.
+    void* zero_buf = metal_get_zero_buffer();
+    bool bound_slots[16] = {false};
     for (int i = 0; i < attrib_count; ++i) {
         MetalVertexAttrib& m = attribs[i];
         void* buf = metal_get_buffer(m.buffer_name);
         if (buf) {
             metal_encoder_set_vertex_buffer(m.location, buf, m.offset);
+            if (m.location < 16) bound_slots[m.location] = true;
+        }
+    }
+    // Bind the zero buffer to any slot 0..15 not covered above.
+    if (zero_buf) {
+        for (int loc = 0; loc < 16; ++loc) {
+            if (!bound_slots[loc]) {
+                metal_encoder_set_vertex_buffer(loc, zero_buf, 0);
+            }
         }
     }
 

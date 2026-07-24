@@ -18,6 +18,12 @@ void  metal_buffer_upload(GLuint name, GLintptr offset, const void* data, size_t
 void* metal_get_buffer(GLuint name);
 void  metal_delete_buffer(GLuint name);
 
+/*
+ * Shared 16-byte zero-filled buffer for binding to unbound vertex attribute
+ * slots (see metal_pipeline.mm vertex descriptor defaults + drawing.cpp).
+ */
+void* metal_get_zero_buffer(void);
+
 /* ---- Textures ---- */
 void* metal_get_or_create_texture(GLuint name, int width, int height, int depth,
                                   int levels, GLenum internal_format, GLenum target,
