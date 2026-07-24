@@ -176,16 +176,15 @@ void* metal_get_or_create_pipeline(GLuint program,
         return nullptr;
     }
 
-    // Vertex descriptor: define attributes the VAO has enabled. Then reflect
-    // the compiled vertex function to find any [[attribute(N)]] it references
+    // Vertex descriptor: define attributes the VAO has enabled. Then parse
+    // the vertex MSL source to find any [[attribute(N)]] the shader references
     // that the VAO didn't cover, and supply matching default entries for those
     // so Metal doesn't reject the pipeline with "Vertex attribute N is not
     // defined in the vertex descriptor."
     //
-    // We use [pd.vertexFunction stageInputOutputAttributesWithError:] to get
-    // the exact MTLVertexFormat each attribute expects, so there are no type
-    // mismatches (the earlier attempt used a fixed Float4 which broke int
-    // attributes). A shared zero-filled buffer is bound at draw time.
+    // We parse the MSL stage_in struct to determine the correct MTLVertexFormat
+    // for each attribute, so there are no type mismatches (a fixed Float4
+    // broke int attributes). A shared zero-filled buffer is bound at draw time.
     if (pd.vertexFunction) {
         MTLVertexDescriptor* vd = [MTLVertexDescriptor vertexDescriptor];
         for (int i = 0; i < attrib_count; ++i) {
@@ -202,26 +201,88 @@ void* metal_get_or_create_pipeline(GLuint program,
             vd.layouts[loc].stepFunction = MTLVertexStepFunctionPerVertex;
         }
 
-        // Reflect the vertex function's stage_in attributes. The returned
-        // array contains MTLAttributeDescriptor objects with .attributeIndex
-        // and .format. For any index the VAO didn't set, add a default entry
-        // using the reflected format so types always match.
-        NSArray<MTLAttributeDescriptor*>* stageAttrs =
-            [pd.vertexFunction stageInputOutputAttributesWithError:nil];
-        if (stageAttrs) {
-            for (MTLAttributeDescriptor* ad in stageAttrs) {
-                NSUInteger idx = ad.attributeIndex;
-                if (idx >= 16) continue;  // safety bound
-                if (vd.attributes[idx].format != MTLVertexFormatInvalid) continue; // already set by VAO
-                // Use the shader-declared format. If it's Invalid (shouldn't
-                // happen for stage_in members), skip.
-                if (ad.format == MTLVertexFormatInvalid) continue;
-                vd.attributes[idx].format      = ad.format;
+        // Parse the vertex MSL source to find [[attribute(N)]] declarations
+        // in the stage_in struct. For any index the VAO didn't set, add a
+        // default entry with a format matching the MSL type.
+        if (vertex_msl && *vertex_msl) {
+            NSString* mslStr = @(vertex_msl);
+            // Match lines like:  float3 Position [[attribute(0)]];
+            // or                int2 UV1 [[attribute(3)]];
+            NSRegularExpression* re = [NSRegularExpression
+                regularExpressionWithPattern:
+                    @"(float|half|int|uint|short|ushort|uchar)([2-4]?)\\s+\\w+\\s+\\[\\[attribute\\((\\d+)\\)\\]\\]"
+                options:0 error:nil];
+            [re enumerateMatchesInString:mslStr options:0
+                                   range:NSMakeRange(0, mslStr.length)
+                              usingBlock:^(NSTextCheckingResult* m, NSMatchingFlags, BOOL* stop) {
+                if (m.numberOfRanges < 4) return;
+                NSString* baseType = [mslStr substringWithRange:[m rangeAtIndex:1]];
+                NSString* vecSize  = [mslStr substringWithRange:[m rangeAtIndex:2]];
+                NSUInteger idx = (NSUInteger)[[mslStr substringWithRange:[m rangeAtIndex:3]] integerValue];
+                if (idx >= 16) return;
+                if (vd.attributes[idx].format != MTLVertexFormatInvalid) return; // VAO set it
+
+                // Map MSL type -> MTLVertexFormat
+                MTLVertexFormat fmt = MTLVertexFormatInvalid;
+                int n = vecSize.length > 0 ? [vecSize intValue] : 1;
+                if ([baseType isEqualToString:@"float"]) {
+                    switch (n) {
+                        case 1: fmt = MTLVertexFormatFloat; break;
+                        case 2: fmt = MTLVertexFormatFloat2; break;
+                        case 3: fmt = MTLVertexFormatFloat3; break;
+                        case 4: fmt = MTLVertexFormatFloat4; break;
+                    }
+                } else if ([baseType isEqualToString:@"half"]) {
+                    switch (n) {
+                        case 1: fmt = MTLVertexFormatHalf; break;
+                        case 2: fmt = MTLVertexFormatHalf2; break;
+                        case 3: fmt = MTLVertexFormatHalf3; break;
+                        case 4: fmt = MTLVertexFormatHalf4; break;
+                    }
+                } else if ([baseType isEqualToString:@"int"]) {
+                    switch (n) {
+                        case 1: fmt = MTLVertexFormatInt; break;
+                        case 2: fmt = MTLVertexFormatInt2; break;
+                        case 3: fmt = MTLVertexFormatInt3; break;
+                        case 4: fmt = MTLVertexFormatInt4; break;
+                    }
+                } else if ([baseType isEqualToString:@"uint"]) {
+                    switch (n) {
+                        case 1: fmt = MTLVertexFormatUInt; break;
+                        case 2: fmt = MTLVertexFormatUInt2; break;
+                        case 3: fmt = MTLVertexFormatUInt3; break;
+                        case 4: fmt = MTLVertexFormatUInt4; break;
+                    }
+                } else if ([baseType isEqualToString:@"short"]) {
+                    switch (n) {
+                        case 1: fmt = MTLVertexFormatShort; break;
+                        case 2: fmt = MTLVertexFormatShort2; break;
+                        case 3: fmt = MTLVertexFormatShort3; break;
+                        case 4: fmt = MTLVertexFormatShort4; break;
+                    }
+                } else if ([baseType isEqualToString:@"ushort"]) {
+                    switch (n) {
+                        case 1: fmt = MTLVertexFormatUShort; break;
+                        case 2: fmt = MTLVertexFormatUShort2; break;
+                        case 3: fmt = MTLVertexFormatUShort3; break;
+                        case 4: fmt = MTLVertexFormatUShort4; break;
+                    }
+                } else if ([baseType isEqualToString:@"uchar"]) {
+                    switch (n) {
+                        case 1: fmt = MTLVertexFormatUChar; break;
+                        case 2: fmt = MTLVertexFormatUChar2; break;
+                        case 3: fmt = MTLVertexFormatUChar3; break;
+                        case 4: fmt = MTLVertexFormatUChar4; break;
+                    }
+                }
+                if (fmt == MTLVertexFormatInvalid) return;
+
+                vd.attributes[idx].format      = fmt;
                 vd.attributes[idx].bufferIndex = idx;
                 vd.attributes[idx].offset      = 0;
-                vd.layouts[idx].stride       = 16;  // non-zero, sizeof(float4)
+                vd.layouts[idx].stride       = 16;
                 vd.layouts[idx].stepFunction = MTLVertexStepFunctionPerVertex;
-            }
+            }];
         }
 
         pd.vertexDescriptor = vd;
