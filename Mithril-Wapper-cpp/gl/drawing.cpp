@@ -191,6 +191,11 @@ static void prepare_draw(GLenum mode) {
         GLuint idx = 0;
         for (auto& kv : prog->uniforms) {
             mithril::Uniform& u = kv.second;
+            // Skip samplers — they use [[texture(N)]] in MSL, not [[buffer(N)]].
+            // Textures are bound directly by unit index in the loop above.
+            // Binding a sampler's "location" (1000+) as a buffer slot would
+            // overflow Metal's buffer table and cause a pipeline error.
+            if (u.isSampler) { idx++; continue; }
             if (u.value.empty()) { idx++; continue; }
             // u.location is the real MSL [[buffer(N)]] slot.
             GLint slot = u.location;

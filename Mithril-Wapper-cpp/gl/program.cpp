@@ -182,7 +182,18 @@ void glLinkProgram(GLuint program) {
             if (it == p->uniforms.end()) {
                 mithril::Uniform u{};
                 u.name = ru.name;
-                u.location = (GLint)ru.msl_buffer;   // real MSL buffer index
+                u.isSampler = ru.is_sampler;
+                if (ru.is_sampler) {
+                    // Samplers use [[texture(N)]] in MSL, not [[buffer(N)]].
+                    // Assign a location in a separate range (1000+) so they
+                    // never collide with plain uniform buffer slots (0..29).
+                    // The location is only used by glGetUniformLocation so
+                    // Minecraft can call glUniform1i to set the texture unit;
+                    // drawing.cpp binds textures directly by unit index.
+                    u.location = 1000 + (GLint)ru.msl_buffer;
+                } else {
+                    u.location = (GLint)ru.msl_buffer;   // real MSL buffer index
+                }
                 u.offset = (GLint)ru.msl_offset;
                 p->uniforms[ru.name] = u;
                 p->uniformByLocation[u.location] = ru.name;
@@ -190,7 +201,12 @@ void glLinkProgram(GLuint program) {
                 // Already recorded (e.g. from the other stage). Ensure the
                 // location is the real MSL slot, not a synthetic one.
                 if (it->second.location < 0) {
-                    it->second.location = (GLint)ru.msl_buffer;
+                    if (ru.is_sampler) {
+                        it->second.location = 1000 + (GLint)ru.msl_buffer;
+                        it->second.isSampler = true;
+                    } else {
+                        it->second.location = (GLint)ru.msl_buffer;
+                    }
                     it->second.offset = (GLint)ru.msl_offset;
                 }
             }

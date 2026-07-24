@@ -15,12 +15,16 @@ namespace mithril {
 //   name        : GLSL uniform name (e.g. "ProjMat")
 //   msl_buffer  : Metal buffer index ([[buffer(N)]]) the MSL shader expects
 //   msl_offset  : byte offset within the buffer (0 for standalone uniforms)
+//   is_sampler  : true if this is a sampler (texture), not a plain uniform.
+//                 Samplers use [[texture(N)]] in MSL, not [[buffer(N)]].
+//                 The texture slot is stored in msl_buffer.
 struct ReflectedUniform {
     std::string name;
     GLenum      type = 0;
     GLint       size = 0;
     unsigned    msl_buffer = 0;
     unsigned    msl_offset = 0;
+    bool        is_sampler = false;
 };
 
 // Translate a desktop GLSL Core Profile source string into Metal Shading

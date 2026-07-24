@@ -97,6 +97,7 @@ struct Uniform {
     GLint arrayStride = 0;
     GLint matrixStride = 0;
     bool rowMajor = false;
+    bool isSampler = false;   // true for sampler uniforms (texture bindings)
     // current value cache (floats)
     std::vector<float> value;
 };

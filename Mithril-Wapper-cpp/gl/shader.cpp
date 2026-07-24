@@ -506,7 +506,13 @@ bool spirv_to_msl_and_reflect(const std::vector<uint32_t>& spirv, std::string& o
     // Using the wrong resource type caused every standalone uniform to be
     // missed → glGetUniformLocation returned -1 → MC logged "uniform does not
     // exist" and rendering broke.
-    auto collect_for_type = [&](spvc_resource_type type_id) {
+    //
+    // Samplers (e.g. `uniform sampler2D Sampler0;`) appear under
+    // SPVC_RESOURCE_TYPE_SAMPLED_IMAGE, NOT under GL_PLAIN_UNIFORM. Without
+    // collecting them, glGetUniformLocation returns -1 for every sampler →
+    // MC logs "could not find sampler named Sampler0" and all textured
+    // rendering is black.
+    auto collect_for_type = [&](spvc_resource_type type_id, bool is_sampler) {
         spvc_resources resources = nullptr;
         if (spvc_compiler_create_shader_resources(compiler, &resources) != SPVC_SUCCESS) return;
         const spvc_reflected_resource* list = nullptr;
@@ -518,11 +524,15 @@ bool spirv_to_msl_and_reflect(const std::vector<uint32_t>& spirv, std::string& o
             ru.name = list[i].name ? list[i].name : "";
             ru.msl_buffer = 0;   // resolved below by parsing MSL
             ru.msl_offset = 0;
+            ru.is_sampler = is_sampler;
             out_uniforms.push_back(std::move(ru));
         }
     };
-    collect_for_type((spvc_resource_type)SPVC_RESOURCE_TYPE_GL_PLAIN_UNIFORM);
-    collect_for_type((spvc_resource_type)SPVC_RESOURCE_TYPE_UNIFORM_BUFFER);
+    collect_for_type((spvc_resource_type)SPVC_RESOURCE_TYPE_GL_PLAIN_UNIFORM, false);
+    collect_for_type((spvc_resource_type)SPVC_RESOURCE_TYPE_UNIFORM_BUFFER, false);
+    collect_for_type((spvc_resource_type)SPVC_RESOURCE_TYPE_SAMPLED_IMAGE, true);
+    collect_for_type((spvc_resource_type)SPVC_RESOURCE_TYPE_SEPARATE_IMAGE, true);
+    collect_for_type((spvc_resource_type)SPVC_RESOURCE_TYPE_SEPARATE_SAMPLERS, true);
 
     const char* result = nullptr;
     if (spvc_compiler_compile(compiler, &result) != SPVC_SUCCESS) {
@@ -553,11 +563,20 @@ bool spirv_to_msl_and_reflect(const std::vector<uint32_t>& spirv, std::string& o
                     escaped += '\\';
                 escaped += c;
             }
-            // Match: <name> ... [[buffer(N)]]  (non-greedy, across newlines)
-            std::regex re(escaped + "[\\s\\S]*?\\[\\[buffer\\((\\d+)\\)\\]\\]");
-            std::smatch m;
-            if (std::regex_search(msl, m, re) && m.size() >= 2) {
-                ru.msl_buffer = (unsigned)std::stoul(m[1].str());
+            if (ru.is_sampler) {
+                // Samplers appear as [[texture(N)]] in MSL.
+                std::regex re(escaped + "[\\s\\S]*?\\[\\[texture\\((\\d+)\\)\\]\\]");
+                std::smatch m;
+                if (std::regex_search(msl, m, re) && m.size() >= 2) {
+                    ru.msl_buffer = (unsigned)std::stoul(m[1].str());
+                }
+            } else {
+                // Plain uniforms appear as [[buffer(N)]] in MSL.
+                std::regex re(escaped + "[\\s\\S]*?\\[\\[buffer\\((\\d+)\\)\\]\\]");
+                std::smatch m;
+                if (std::regex_search(msl, m, re) && m.size() >= 2) {
+                    ru.msl_buffer = (unsigned)std::stoul(m[1].str());
+                }
             }
         }
     }
