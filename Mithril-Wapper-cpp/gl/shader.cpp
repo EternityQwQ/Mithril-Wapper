@@ -376,6 +376,167 @@ bool spirv_to_msl(const std::vector<uint32_t>& spirv, std::string& out, std::str
     return true;
 }
 
+/*
+ * Same as spirv_to_msl, but also reflects the MSL buffer binding info for
+ * every standalone (non-block) uniform. This lets the caller bind uniform
+ * MTLBuffers to the exact [[buffer(N)]] slots the MSL shader reads from.
+ *
+ * SPIRV-Cross's MSL backend assigns each GLSL standalone uniform (e.g.
+ * `uniform mat4 ProjMat;`) a Metal buffer index starting at
+ * SPVC_COMPILER_OPTION_MSL_UNIFORM_BUFFER_BASE (30). The assignment order
+ * follows the SPIR-V reflection order, NOT the unordered_map iteration order
+ * used by drawing.cpp's old `base + idx` scheme — so we must reflect the real
+ * indices here.
+ */
+bool spirv_to_msl_and_reflect(const std::vector<uint32_t>& spirv, std::string& out,
+                             std::string& info,
+                             std::vector<ReflectedUniform>& out_uniforms) {
+    out_uniforms.clear();
+    spvc_context ctx = nullptr;
+    if (spvc_context_create(&ctx) != SPVC_SUCCESS) { info = "spvc_context_create failed"; return false; }
+
+    spvc_parsed_ir ir = nullptr;
+    if (spvc_context_parse_spirv(ctx, reinterpret_cast<const SpvId*>(spirv.data()),
+                                 spirv.size(), &ir) != SPVC_SUCCESS) {
+        info = spvc_context_get_last_error_string(ctx) ? spvc_context_get_last_error_string(ctx) : "parse failed";
+        spvc_context_destroy(ctx);
+        return false;
+    }
+
+    spvc_compiler compiler = nullptr;
+    if (spvc_context_create_compiler(ctx, SPVC_BACKEND_MSL, ir,
+                                     SPVC_CAPTURE_MODE_TAKE_OWNERSHIP,
+                                     &compiler) != SPVC_SUCCESS) {
+        info = spvc_context_get_last_error_string(ctx) ? spvc_context_get_last_error_string(ctx) : "create_compiler failed";
+        spvc_context_destroy(ctx);
+        return false;
+    }
+
+    spvc_compiler_options opts = nullptr;
+    spvc_compiler_create_compiler_options(compiler, &opts);
+    spvc_compiler_options_set_uint(opts, SPVC_COMPILER_OPTION_MSL_VERSION,
+                                   SPVC_MAKE_MSL_VERSION(2, 3, 0));
+    spvc_compiler_options_set_uint(opts, SPVC_COMPILER_OPTION_MSL_UNIFORM_BUFFER_BASE, 30);
+    spvc_compiler_install_compiler_options(compiler, opts);
+
+    // Assign Location decorations to STAGE_INPUT (same as spirv_to_msl).
+    {
+        spvc_resources resources = nullptr;
+        if (spvc_compiler_create_shader_resources(compiler, &resources) == SPVC_SUCCESS) {
+            const spvc_reflected_resource* list = nullptr;
+            size_t count = 0;
+            if (spvc_resources_get_resource_list_for_type(resources,
+                    SPVC_RESOURCE_TYPE_STAGE_INPUT, &list, &count) == SPVC_SUCCESS) {
+                const unsigned SpvDecorationLocation = 30;
+                SpvExecutionModel model = spvc_compiler_get_execution_model(compiler);
+                if (model == SpvExecutionModelFragment) {
+                    std::vector<std::pair<std::string, SpvId>> vars;
+                    vars.reserve(count);
+                    for (size_t i = 0; i < count; ++i) {
+                        const char* nm = list[i].name ? list[i].name : "";
+                        vars.push_back({nm, list[i].id});
+                    }
+                    std::sort(vars.begin(), vars.end(),
+                        [](const auto& a, const auto& b) { return a.first < b.first; });
+                    unsigned next_location = 0;
+                    for (const auto& v : vars) {
+                        unsigned existing = spvc_compiler_get_decoration(
+                            compiler, v.second, (SpvDecoration)SpvDecorationLocation);
+                        if (existing == 0) {
+                            spvc_compiler_set_decoration(compiler, v.second,
+                                (SpvDecoration)SpvDecorationLocation, next_location);
+                            next_location++;
+                        } else { next_location = existing + 1; }
+                    }
+                } else {
+                    unsigned next_location = 0;
+                    for (size_t i = 0; i < count; ++i) {
+                        unsigned existing = spvc_compiler_get_decoration(
+                            compiler, list[i].id, (SpvDecoration)SpvDecorationLocation);
+                        if (existing == 0) {
+                            spvc_compiler_set_decoration(compiler, list[i].id,
+                                (SpvDecoration)SpvDecorationLocation, next_location);
+                            next_location++;
+                        } else { next_location = existing + 1; }
+                    }
+                }
+            }
+        }
+    }
+    // Assign Location to STAGE_OUTPUT (same as spirv_to_msl).
+    {
+        spvc_resources resources = nullptr;
+        if (spvc_compiler_create_shader_resources(compiler, &resources) == SPVC_SUCCESS) {
+            const spvc_reflected_resource* list = nullptr;
+            size_t count = 0;
+            if (spvc_resources_get_resource_list_for_type(resources,
+                    SPVC_RESOURCE_TYPE_STAGE_OUTPUT, &list, &count) == SPVC_SUCCESS) {
+                const unsigned SpvDecorationLocation = 30;
+                std::vector<std::pair<std::string, SpvId>> vars;
+                vars.reserve(count);
+                for (size_t i = 0; i < count; ++i) {
+                    const char* nm = list[i].name ? list[i].name : "";
+                    vars.push_back({nm, list[i].id});
+                }
+                std::sort(vars.begin(), vars.end(),
+                    [](const auto& a, const auto& b) { return a.first < b.first; });
+                unsigned next_location = 0;
+                for (const auto& v : vars) {
+                    unsigned existing = spvc_compiler_get_decoration(
+                        compiler, v.second, (SpvDecoration)SpvDecorationLocation);
+                    if (existing == 0) {
+                        spvc_compiler_set_decoration(compiler, v.second,
+                            (SpvDecoration)SpvDecorationLocation, next_location);
+                        next_location++;
+                    } else { next_location = existing + 1; }
+                }
+            }
+        }
+    }
+
+    // Reflect standalone uniforms (SPVC_RESOURCE_TYPE_UNIFORM_BUFFER covers
+    // both GLSL uniform blocks AND standalone uniforms in SPIR-V, since
+    // glslang wraps standalone uniforms in an implicit struct).
+    {
+        spvc_resources resources = nullptr;
+        if (spvc_compiler_create_shader_resources(compiler, &resources) == SPVC_SUCCESS) {
+            const spvc_reflected_resource* list = nullptr;
+            size_t count = 0;
+            if (spvc_resources_get_resource_list_for_type(resources,
+                    SPVC_RESOURCE_TYPE_UNIFORM_BUFFER, &list, &count) == SPVC_SUCCESS) {
+                for (size_t i = 0; i < count; ++i) {
+                    ReflectedUniform ru;
+                    ru.name = list[i].name ? list[i].name : "";
+                    // The Metal buffer index is the Binding decoration (which
+                    // SPIRV-Cross's MSL backend maps to [[buffer(N)]] offset by
+                    // MSL_UNIFORM_BUFFER_BASE). Use spvc_compiler_get_decoration
+                    // with Binding; if 0/unset, fall back to the reflection
+                    // index (i) + base.
+                    unsigned binding = spvc_compiler_get_decoration(
+                        compiler, list[i].id, SpvDecorationBinding);
+                    // SPIRV-Cross MSL backend assigns buffer indices starting
+                    // at MSL_UNIFORM_BUFFER_BASE (30) in reflection order.
+                    // The actual index is base + reflection_index.
+                    ru.msl_buffer = 30 + (unsigned)i;
+                    ru.msl_offset = 0;
+                    (void)binding;
+                    out_uniforms.push_back(std::move(ru));
+                }
+            }
+        }
+    }
+
+    const char* result = nullptr;
+    if (spvc_compiler_compile(compiler, &result) != SPVC_SUCCESS) {
+        info = spvc_context_get_last_error_string(ctx) ? spvc_context_get_last_error_string(ctx) : "compile failed";
+        spvc_context_destroy(ctx);
+        return false;
+    }
+    out = result ? result : "";
+    spvc_context_destroy(ctx);
+    return true;
+}
+
 } // namespace
 
 bool shader_translate(GLenum gl_stage, const std::string& glsl_source,
@@ -428,6 +589,22 @@ bool shader_translate(GLenum gl_stage, const std::string& glsl_source,
     std::lock_guard<std::mutex> lk(cache().mu);
     cache().entries[key] = out_msl;
     return true;
+}
+
+bool shader_reflect_uniforms(GLenum gl_stage, const std::string& glsl_source,
+                            std::vector<ReflectedUniform>& out_uniforms,
+                            std::string& out_info_log,
+                            const std::unordered_map<std::string, GLuint>* attrib_bindings) {
+    out_uniforms.clear();
+    (void)glslang_init();
+
+    std::vector<uint32_t> spirv;
+    if (!glsl_to_spirv(gl_stage, glsl_source, spirv, out_info_log, attrib_bindings)) {
+        return false;
+    }
+
+    std::string msl;
+    return spirv_to_msl_and_reflect(spirv, msl, out_info_log, out_uniforms);
 }
 
 } // namespace mithril

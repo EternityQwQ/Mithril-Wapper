@@ -1,6 +1,7 @@
 // Mithril-Wapper - metal/metal_context.mm
 // Metal device / command queue / render-pass lifecycle.
 #import <Metal/Metal.h>
+#import <QuartzCore/QuartzCore.h>   // id<CAMetalDrawable>
 #import <Foundation/Foundation.h>
 
 #include "metal_context.h"
@@ -20,6 +21,7 @@ static uint32_t      g_clear_stencil = 0;
 // passes set Load so previously-cleared/drawn contents are preserved.
 static MTLLoadAction g_color_load = MTLLoadActionLoad;
 static MTLLoadAction g_depth_load = MTLLoadActionLoad;
+static MTLLoadAction g_stencil_load = MTLLoadActionLoad;
 
 extern "C" {
 
@@ -46,8 +48,16 @@ void metal_set_clear_color(float r, float g, float b, float a) {
 void metal_set_clear_depth(double d) { g_clear_depth = d; }
 void metal_set_clear_stencil(int s)  { g_clear_stencil = (uint32_t)s; }
 
-void metal_set_load_clear(void) { g_color_load = MTLLoadActionClear; g_depth_load = MTLLoadActionClear; }
-void metal_set_load_load(void)  { g_color_load = MTLLoadActionLoad;  g_depth_load = MTLLoadActionLoad; }
+void metal_set_load_clear(void) { g_color_load = MTLLoadActionClear; g_depth_load = MTLLoadActionClear; g_stencil_load = MTLLoadActionClear; }
+void metal_set_load_load(void)  { g_color_load = MTLLoadActionLoad;  g_depth_load = MTLLoadActionLoad;  g_stencil_load = MTLLoadActionLoad; }
+
+void metal_set_load_clear_mask(unsigned mask) {
+    // GL_COLOR_BUFFER_BIT = 0x00000040, GL_DEPTH_BUFFER_BIT = 0x00000100,
+    // GL_STENCIL_BUFFER_BIT = 0x00000400
+    g_color_load   = (mask & 0x00000040u) ? MTLLoadActionClear : MTLLoadActionLoad;
+    g_depth_load   = (mask & 0x00000100u) ? MTLLoadActionClear : MTLLoadActionLoad;
+    g_stencil_load = (mask & 0x00000400u) ? MTLLoadActionClear : MTLLoadActionLoad;
+}
 
 static MTLRenderPassDescriptor* build_pass_desc(void** color_textures,
                                                 int color_count,
@@ -76,7 +86,7 @@ static MTLRenderPassDescriptor* build_pass_desc(void** color_textures,
             // MTLPixelFormatDepth24Unorm_Stencil8 is macOS-only; on iOS we
             // always map GL_DEPTH24_STENCIL8 to Depth32Float_Stencil8 above.
             desc.stencilAttachment.texture = dt;
-            desc.stencilAttachment.loadAction  = g_depth_load;
+            desc.stencilAttachment.loadAction  = g_stencil_load;
             desc.stencilAttachment.storeAction = MTLStoreActionStore;
             desc.stencilAttachment.clearStencil = g_clear_stencil;
         }
@@ -118,8 +128,25 @@ void metal_commit(void) {
         [g_cmd commit];
         // Don't waitUntilCompleted — Metal command buffers execute in order,
         // and blocking here serializes CPU/GPU, destroying performance.
-        // eglSwapBuffers presents the drawable after commit; the GPU will
-        // finish the encoded work before presenting.
+        g_cmd = nil;
+    }
+}
+
+void metal_commit_and_present(void* drawable) {
+    if (g_enc) { [g_enc endEncoding]; g_enc = nil; }
+    g_pass_active = NO;
+    if (g_cmd) {
+        if (drawable) {
+            id<CAMetalDrawable> d = (__bridge id<CAMetalDrawable>)drawable;
+            // Register the present inside the command buffer so Metal
+            // schedules it after all encoded rendering completes. This is the
+            // ONLY correct way to present a CAMetalLayer drawable — calling
+            // [drawable present] after [cmd commit] does NOT guarantee the GPU
+            // has finished writing to the drawable's texture, which results in
+            // presenting an uninitialised/previous frame → black screen.
+            [g_cmd presentDrawable:d];
+        }
+        [g_cmd commit];
         g_cmd = nil;
     }
 }
@@ -237,12 +264,53 @@ void metal_encoder_set_triangle_fill_mode(int fill) {
     [g_enc setTriangleFillMode:m];
 }
 
+static MTLCompareFunction to_mtl_compare(int gl_func) {
+    switch (gl_func) {
+        case 0x0200: return MTLCompareFunctionNever;        // GL_NEVER
+        case 0x0201: return MTLCompareFunctionLess;         // GL_LESS
+        case 0x0202: return MTLCompareFunctionEqual;        // GL_EQUAL
+        case 0x0203: return MTLCompareFunctionLessEqual;     // GL_LEQUAL
+        case 0x0204: return MTLCompareFunctionGreater;      // GL_GREATER
+        case 0x0205: return MTLCompareFunctionNotEqual;     // GL_NOTEQUAL
+        case 0x0206: return MTLCompareFunctionGreaterEqual; // GL_GEQUAL
+        case 0x0207: return MTLCompareFunctionAlways;        // GL_ALWAYS
+        default:     return MTLCompareFunctionLess;
+    }
+}
+
+// Cached depth-stencil states keyed by (enabled, write, compare).
+static NSMutableDictionary<NSString*, id<MTLDepthStencilState>>* g_depth_states() {
+    static NSMutableDictionary* d = [NSMutableDictionary new];
+    return d;
+}
+
 void metal_encoder_set_depth_test(int enabled, int write_mask, int compare_func) {
+    metal_encoder_set_depth_stencil(enabled, write_mask, compare_func);
+}
+
+void metal_encoder_set_depth_stencil(int enabled, int write_mask, int compare_func) {
     if (!g_enc) return;
-    // Best-effort: depth-stencil state object creation is heavy; for bring-up we
-    // rely on the pipeline's depthAttachmentPixelFormat and apply depth write
-    // enable + compare via a cached descriptor.
-    (void)enabled; (void)write_mask; (void)compare_func;
+    // When depth test is disabled, Metal's default (Always + no write) is
+    // equivalent, but we still bind an explicit state for consistency.
+    int eff_enabled = enabled ? 1 : 0;
+    int eff_write = enabled ? (write_mask ? 1 : 0) : 0;
+    int eff_cmp = enabled ? compare_func : 0x0207; // GL_ALWAYS when disabled
+
+    NSString* key = [NSString stringWithFormat:@"%d:%d:%d", eff_enabled, eff_write, eff_cmp];
+    id<MTLDepthStencilState> state = g_depth_states()[key];
+    if (!state) {
+        MTLDepthStencilDescriptor* d = [MTLDepthStencilDescriptor new];
+        d.depthCompareEnabled = eff_enabled ? YES : NO;
+        d.depthWriteEnabled = eff_write ? YES : NO;
+        if (eff_enabled) {
+            d.depthCompareFunction = to_mtl_compare(eff_cmp);
+        } else {
+            d.depthCompareFunction = MTLCompareFunctionAlways;
+        }
+        state = [g_device newDepthStencilStateWithDescriptor:d];
+        if (state) g_depth_states()[key] = state;
+    }
+    if (state) [g_enc setDepthStencilState:state];
 }
 
 void metal_encoder_set_color_write_mask(int r, int g, int b, int a) {
@@ -291,6 +359,33 @@ void metal_encoder_draw_indexed_instanced(int primitive, int count, int index_ty
                      indexBuffer:ib
                indexBufferOffset:(NSUInteger)index_offset
                    instanceCount:(NSUInteger)primcount];
+}
+
+void metal_blit_texture(void* src, void* dst,
+                       int sx, int sy, int sw, int sh,
+                       int dx, int dy, int level, int layer) {
+    if (!g_device || !g_queue || !src || !dst || sw <= 0 || sh <= 0) return;
+    // End any active render pass — a blit encoder and a render encoder cannot
+    // coexist on the same command buffer.
+    if (g_enc) { [g_enc endEncoding]; g_enc = nil; }
+    g_pass_active = NO;
+    if (!g_cmd) g_cmd = [g_queue commandBuffer];
+    id<MTLBlitCommandEncoder> blit = [g_cmd blitCommandEncoder];
+    if (!blit) return;
+    id<MTLTexture> srcTex = (__bridge id<MTLTexture>)src;
+    id<MTLTexture> dstTex = (__bridge id<MTLTexture>)dst;
+    [blit copyFromTexture:srcTex
+              sourceSlice:0
+              sourceLevel:(NSUInteger)level
+             sourceOrigin:MTLOriginMake((NSUInteger)sx, (NSUInteger)sy, 0)
+               sourceSize:MTLSizeMake((NSUInteger)sw, (NSUInteger)sh, 1)
+                toTexture:dstTex
+         destinationSlice:(NSUInteger)layer
+         destinationLevel:(NSUInteger)level
+        destinationOrigin:MTLOriginMake((NSUInteger)dx, (NSUInteger)dy, 0)];
+    [blit endEncoding];
+    // Do NOT commit here — the blit shares the frame's command buffer with
+    // subsequent render passes; eglSwapBuffers commits the whole frame.
 }
 
 } // extern "C"

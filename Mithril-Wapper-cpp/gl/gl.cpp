@@ -39,15 +39,18 @@ void glClear(GLbitfield mask) {
     int w = 0, h = 0;
     int n = mithril::collect_draw_fbo_attachments(colors, &depth, &w, &h);
 
-    // Clear uses the Clear load action for the requested buffers.
-    metal_set_load_clear();
+    // Set per-attachment load actions based on the GL clear mask so that only
+    // the requested buffers (color/depth/stencil) are cleared; others are
+    // preserved (Load). Previously this cleared ALL attachments unconditionally
+    // and also committed a separate command buffer, which broke the frame:
+    // the clear landed on one command buffer and the draws on another, and
+    // glClear(GL_DEPTH_BUFFER_BIT) would wipe the color buffer too.
+    metal_set_load_clear_mask((unsigned)mask);
     metal_begin_render_pass(colors, n, depth, w, h, 1);
-    // Respect the mask: if only depth/stencil, the color attachment load action
-    // is irrelevant (we still need a pass to clear depth). End immediately —
-    // there is nothing to encode.
     metal_end_render_pass();
-    metal_commit();
-    (void)mask;
+    // Do NOT metal_commit() here — the clear must stay in the same command
+    // buffer as the subsequent draws so they share one render pass sequence.
+    // eglSwapBuffers commits the accumulated command buffer at frame end.
 }
 
 /* ---- Enable / Disable ---- */

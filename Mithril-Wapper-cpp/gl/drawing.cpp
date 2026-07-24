@@ -109,11 +109,15 @@ static void prepare_draw(GLenum mode) {
 
     // Bind pipeline + encoder state.
     metal_encoder_set_pipeline(pipeline);
-    metal_encoder_set_viewport(g_state->viewportX, g_state->viewportY,
+    // GL viewport origin is bottom-left; Metal's is top-left. Flip Y so the
+    // image is not upside-down (and, for non-zero viewportY, not off-screen).
+    int vpY = (h > 0) ? (h - g_state->viewportY - g_state->viewportH) : g_state->viewportY;
+    metal_encoder_set_viewport(g_state->viewportX, vpY,
                                g_state->viewportW, g_state->viewportH,
                                g_state->depthNear, g_state->depthFar);
     if (g_state->scissorTest) {
-        metal_encoder_set_scissor(g_state->scissorX, g_state->scissorY,
+        int scY = (h > 0) ? (h - g_state->scissorY - g_state->scissorH) : g_state->scissorY;
+        metal_encoder_set_scissor(g_state->scissorX, scY,
                                   g_state->scissorW, g_state->scissorH);
     }
     if (g_state->cullFace) {
@@ -175,26 +179,31 @@ static void prepare_draw(GLenum mode) {
         if (samp) metal_encoder_set_fragment_sampler(u, samp);
     }
 
-    // Bind uniform values. SPIRV-Cross assigns each GLSL uniform a Metal
-    // buffer slot starting at 30 (SPVC_COMPILER_OPTION_MSL_UNIFORM_BUFFER_BASE).
-    // We create/update a small MTLBuffer per uniform and bind it to both
-    // vertex and fragment stages. Without this, ProjMat/ModelViewMat are
-    // all zeros and every vertex collapses to the origin → black screen.
+    // Bind uniform values. SPIRV-Cross's MSL backend assigns each GLSL
+    // standalone uniform a Metal buffer index starting at 30
+    // (SPVC_COMPILER_OPTION_MSL_UNIFORM_BUFFER_BASE). glLinkProgram reflects
+    // the real [[buffer(N)]] slot for each uniform and stores it in
+    // Uniform::location. We bind each uniform's MTLBuffer to that exact slot.
+    //
+    // Previously this used `base + unordered_map_index`, which did NOT match
+    // SPIRV-Cross's reflection order — ProjMat/ModelViewMat were bound to the
+    // wrong slots, so the shader read all-zero matrices and every vertex
+    // collapsed to the origin → black screen.
     {
-        GLuint base = 30;
         GLuint idx = 0;
         for (auto& kv : prog->uniforms) {
             mithril::Uniform& u = kv.second;
             if (u.value.empty()) { idx++; continue; }
+            // u.location is the real MSL [[buffer(N)]] slot (>= 30).
+            GLint slot = u.location;
+            if (slot < 0) { idx++; continue; }
             // Create or update a Metal buffer for this uniform's data.
-            // Use a stable name derived from the program id + uniform index.
             GLuint uname = prog->id * 10000 + idx;
             size_t sz = u.value.size() * sizeof(float);
             void* ubuf = metal_get_or_create_buffer(uname, u.value.data(), sz);
             if (ubuf) {
-                GLuint slot = base + idx;
-                metal_encoder_set_vertex_buffer(slot, ubuf, 0);
-                metal_encoder_set_fragment_buffer(slot, ubuf, 0);
+                metal_encoder_set_vertex_buffer((GLuint)slot, ubuf, 0);
+                metal_encoder_set_fragment_buffer((GLuint)slot, ubuf, 0);
             }
             idx++;
         }

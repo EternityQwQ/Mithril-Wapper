@@ -703,26 +703,18 @@ EGLBoolean eglSwapBuffers(EGLDisplay dpy, EGLSurface surface) {
     if (!s) { set_error(EGL_BAD_SURFACE); return EGL_FALSE; }
 
     // Flush any pending Metal work into the current drawable's texture.
-    // metal_commit() ends the active render pass and commits the command
-    // buffer, so the encoded draws land on s->colorTex before we present.
+    // metal_commit_and_present() ends the active render pass, registers a
+    // present for the drawable on the command buffer (so the GPU finishes all
+    // rendering before the drawable is shown), then commits. This is the
+    // correct Metal way to present — using [drawable present] after commit does
+    // NOT guarantee the GPU has finished writing, which causes a black screen.
     metal_end_render_pass();
-    metal_commit();
-
-    // Present the frame we just rendered, then acquire the next drawable for
-    // the following frame. We honour swapInterval==0 by presenting without
-    // waiting for the v-sync signal (CAMetalLayer's default is v-synced).
     if (s->drawable) {
-        if (s->swapInterval <= 0) {
-            // Best-effort immediate present. MTLDrawable present presents at
-            // the next v-sync by default; there is no portable way to skip
-            // vsync on iOS, but we still call present to keep the pipeline
-            // moving.
-            [s->drawable present];
-        } else {
-            [s->drawable present];
-        }
+        metal_commit_and_present((__bridge void*)s->drawable);
         s->drawable = nil;
         s->colorTex = nil;
+    } else {
+        metal_commit();
     }
 
     // Acquire the next drawable and re-install it on the active GLState so

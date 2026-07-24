@@ -151,10 +151,54 @@ void glLinkProgram(GLuint program) {
         MITHRIL_LOG_ERROR("program", "Link failed for program %u: missing stage", program);
         return;
     }
-    p->linked = true;
-    p->infoLog.clear();
-    MITHRIL_LOG_INFO("program", "Linked program %u (VS=%zu bytes, FS=%zu bytes)",
-                     program, p->vertexMSL.size(), p->fragmentMSL.size());
+
+    // Reflect the Metal buffer bindings for every standalone uniform in each
+    // attached shader. SPIRV-Cross assigns each GLSL `uniform T name;` a
+    // [[buffer(N)]] slot in MSL starting at index 30. We store the real slot
+    // so drawing.cpp can bind uniform MTLBuffers to the exact slots the MSL
+    // shader reads from — instead of guessing `30 + unordered_map_index`,
+    // which didn't match SPIRV-Cross's reflection order and caused all
+    // uniforms (ProjMat, ModelViewMat, ...) to be zero → black screen.
+    //
+    // We also populate the Program::uniforms map here so glGetUniformLocation
+    // returns stable locations instead of allocating synthetic ones on demand.
+    for (GLuint sid : p->attachedShaders) {
+        mithril::Shader* s = mithril::state_get_shader(sid);
+        if (!s) continue;
+        std::vector<mithril::ReflectedUniform> reflected;
+        std::string info;
+        if (!mithril::shader_reflect_uniforms(s->type, s->source, reflected, info,
+                                               &p->attribBindings)) {
+            MITHRIL_LOG_DEBUG("program", "Uniform reflection failed for shader %u: %s",
+                              sid, info.c_str());
+            continue;
+        }
+        for (const auto& ru : reflected) {
+            // Merge: if the uniform was already seen (e.g. declared in both
+            // VS and FS), keep the vertex shader's slot (they should match
+            // since both use MSL_UNIFORM_BUFFER_BASE=30 + same reflection
+            // order, but be defensive).
+            auto it = p->uniforms.find(ru.name);
+            if (it == p->uniforms.end()) {
+                mithril::Uniform u{};
+                u.name = ru.name;
+                u.location = (GLint)ru.msl_buffer;   // store real MSL buffer index
+                u.offset = (GLint)ru.msl_offset;
+                p->uniforms[ru.name] = u;
+                p->uniformByLocation[u.location] = ru.name;
+            } else {
+                // Already recorded (e.g. from the other stage). Ensure the
+                // location is the real MSL slot, not the synthetic one that
+                // glGetUniformLocation may have assigned.
+                if (it->second.location < 30) {
+                    it->second.location = (GLint)ru.msl_buffer;
+                    it->second.offset = (GLint)ru.msl_offset;
+                }
+            }
+        }
+    }
+    MITHRIL_LOG_INFO("program", "Linked program %u: reflected %zu uniforms (VS=%zu bytes, FS=%zu bytes)",
+                     program, p->uniforms.size(), p->vertexMSL.size(), p->fragmentMSL.size());
 }
 
 void glUseProgram(GLuint program) {
@@ -252,16 +296,12 @@ GLint glGetUniformLocation(GLuint program, const GLchar* name) {
     mithril::Program* p = mithril::state_get_program(program);
     if (!p || !p->linked || !name) return -1;
     auto it = p->uniforms.find(name);
-    if (it == p->uniforms.end()) {
-        // Allocate a synthetic location on first query so subsequent setters work.
-        mithril::Uniform u{};
-        u.name = name;
-        u.location = (GLint)p->uniforms.size();
-        p->uniforms[name] = u;
-        p->uniformByLocation[u.location] = name;
-        return u.location;
+    if (it != p->uniforms.end()) {
+        return it->second.location;
     }
-    return it->second.location;
+    // Uniform not reflected (e.g. a built-in or optimized-out name the app
+    // queries but the shader doesn't use). Return -1 per the GL spec.
+    return -1;
 }
 
 void glGetActiveUniform(GLuint program, GLuint index, GLsizei bufSize,
