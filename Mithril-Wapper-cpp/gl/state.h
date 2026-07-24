@@ -117,6 +117,10 @@ struct Program {
     std::unordered_map<GLint, std::string> uniformByLocation;
     std::unordered_map<std::string, Attrib> attribs;
     std::unordered_map<std::string, GLuint> uniformBlocks;
+    // Attribute name -> location overrides set via glBindAttribLocation before
+    // linking. Consumed by glLinkProgram -> shader_translate so that the
+    // generated SPIR-V/MSL [[attribute(N)]] matches the app's vertex descriptor.
+    std::unordered_map<std::string, GLuint> attribBindings;
     std::string vertexMSL;
     std::string fragmentMSL;
     void* metalVertexLib = nullptr;    // id<MTLLibrary>

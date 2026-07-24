@@ -120,8 +120,13 @@ void glVertexAttrib4fv(GLuint index, const GLfloat* v) {
 
 void glBindAttribLocation(GLuint program, GLuint index, const GLchar* name) {
     MITHRIL_ENSURE_INIT();
-    (void)program; (void)index; (void)name;
-    // SPIRV-Cross bakes locations into MSL by layout; this is a no-op for us.
+    mithril::Program* p = mithril::state_get_program(program);
+    if (!p || !name) return;
+    // Record the name -> location mapping. It is consumed by glLinkProgram
+    // when translating GLSL to SPIR-V/MSL so the generated [[attribute(N)]]
+    // matches the application's vertex descriptor. GL spec: bindings take
+    // effect at link time, replacing any previous binding for the same name.
+    p->attribBindings[name] = index;
 }
 
 void glBindFragDataLocation(GLuint program, GLuint color, const GLchar* name) {

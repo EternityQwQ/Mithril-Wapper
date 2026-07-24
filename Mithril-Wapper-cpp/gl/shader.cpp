@@ -71,6 +71,65 @@ int ensure_glsl_version(std::string& src) {
     return ver;
 }
 
+/*
+ * Inject `layout(location=N)` qualifiers into GLSL `in` declarations based on
+ * the application's glBindAttribLocation() mappings. Minecraft 1.21 shaders
+ * use `#version 150` with bare `in vec3 Position;` declarations and rely on
+ * glBindAttribLocation to assign locations at runtime. If we let glslang
+ * auto-map locations (setAutoMapLocations), the resulting SPIR-V locations may
+ * not match the application's vertex descriptor, causing attribute misbinding
+ * in Metal. This function rewrites each `in` declaration that has a binding
+ * into `layout(location=N) in ...` so the SPIR-V location is fixed.
+ *
+ * Only vertex shaders are affected. The rewrite is conservative: it matches
+ * declarations of the form `in <type> <name>;` and skips lines that already
+ * have a layout() qualifier.
+ */
+void apply_attrib_bindings(std::string& src, GLenum gl_stage,
+                           const std::unordered_map<std::string, GLuint>* bindings) {
+    if (!bindings || bindings->empty()) return;
+    if (gl_stage != GL_VERTEX_SHADER) return;
+
+    static std::regex in_decl_re(
+        R"(^\s*(?:layout\s*\([^)]*\)\s*)?(in|attribute)\s+(\w+)\s+(\w+)\s*(\[[^\]]*\])?\s*;)",
+        std::regex::optimize);
+
+    std::string out;
+    out.reserve(src.size() + bindings->size() * 24);
+    std::string::const_iterator search_start(src.cbegin());
+    std::smatch m;
+    size_t last_pos = 0;
+
+    while (std::regex_search(search_start, src.cend(), m, in_decl_re)) {
+        size_t match_pos = m.position(0) + (search_start - src.cbegin());
+        out.append(src, last_pos, match_pos - last_pos);
+
+        const std::string& keyword = m[1].str();   // "in" or "attribute"
+        const std::string& vartype = m[2].str();
+        const std::string& varname = m[3].str();
+        const std::string& array_suffix = m[4].matched ? m[4].str() : std::string();
+
+        auto it = bindings->find(varname);
+        if (it != bindings->end()) {
+            out += "layout(location=";
+            out += std::to_string(it->second);
+            out += ") in ";
+            out += vartype;
+            out += ' ';
+            out += varname;
+            if (!array_suffix.empty()) out += array_suffix;
+            out += ';';
+        } else {
+            out += m[0].str();
+        }
+
+        last_pos = match_pos + m[0].length();
+        search_start = m.suffix().first;
+    }
+    out.append(src, last_pos, std::string::npos);
+    src.swap(out);
+}
+
 // FNV-1a 64-bit hash for cache keying.
 uint64_t fnv1a(const std::string& s) {
     uint64_t h = 1469598103934665603ULL;
@@ -85,7 +144,8 @@ struct Cache {
 Cache& cache() { static Cache c; return c; }
 
 bool glsl_to_spirv(GLenum gl_stage, const std::string& src,
-                   std::vector<uint32_t>& spirv, std::string& info) {
+                   std::vector<uint32_t>& spirv, std::string& info,
+                   const std::unordered_map<std::string, GLuint>* attrib_bindings) {
     glslang_init();
     EShLanguage stage = to_esh_stage(gl_stage);
     if (stage == EShLangCount) { info = "unsupported shader stage"; return false; }
@@ -95,6 +155,10 @@ bool glsl_to_spirv(GLenum gl_stage, const std::string& src,
     // which is fine for the OpenGL SPIR-V client.
     std::string source = src;
     int glsl_version = ensure_glsl_version(source);
+
+    // Inject layout(location=N) from glBindAttribLocation mappings so the
+    // SPIR-V stage_input locations match the application's vertex descriptor.
+    apply_attrib_bindings(source, gl_stage, attrib_bindings);
 
     glslang::TShader shader(stage);
     const char* s = source.c_str();
@@ -224,12 +288,20 @@ bool spirv_to_msl(const std::vector<uint32_t>& spirv, std::string& out, std::str
 } // namespace
 
 bool shader_translate(GLenum gl_stage, const std::string& glsl_source,
-                      std::string& out_msl, std::string& out_info_log) {
+                      std::string& out_msl, std::string& out_info_log,
+                      const std::unordered_map<std::string, GLuint>* attrib_bindings) {
     const char* stage_name =
         gl_stage == GL_VERTEX_SHADER ? "vertex" :
         gl_stage == GL_FRAGMENT_SHADER ? "fragment" : "other";
 
+    // Cache key includes the bindings so that re-linking with different
+    // attribute bindings (e.g. a different VertexFormat) produces fresh MSL.
     uint64_t key = fnv1a(glsl_source) ^ (uint64_t)gl_stage * 0x9E3779B97F4A7C15ULL;
+    if (attrib_bindings) {
+        for (const auto& kv : *attrib_bindings) {
+            key ^= fnv1a(kv.first) ^ ((uint64_t)kv.second * 0x100000001B3ULL);
+        }
+    }
     {
         std::lock_guard<std::mutex> lk(cache().mu);
         auto it = cache().entries.find(key);
@@ -245,7 +317,7 @@ bool shader_translate(GLenum gl_stage, const std::string& glsl_source,
                      stage_name, glsl_source.size());
 
     std::vector<uint32_t> spirv;
-    if (!glsl_to_spirv(gl_stage, glsl_source, spirv, out_info_log)) {
+    if (!glsl_to_spirv(gl_stage, glsl_source, spirv, out_info_log, attrib_bindings)) {
         MITHRIL_LOG_ERROR("shader", "GLSL->SPIR-V failed for %s shader: %s",
                           stage_name, out_info_log.c_str());
         return false;

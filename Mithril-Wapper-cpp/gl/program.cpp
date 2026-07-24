@@ -113,13 +113,37 @@ void glLinkProgram(GLuint program) {
     p->attribs.clear();
     p->uniformBlocks.clear();
 
+    // If the application called glBindAttribLocation before linking, re-translate
+    // the vertex shader with those location overrides so the SPIR-V (and thus
+    // the MSL [[attribute(N)]]) matches the app's vertex descriptor. Fragment
+    // shaders are unaffected by attribute bindings.
+    const bool has_attrib_bindings = !p->attribBindings.empty();
+
     bool missing = false;
     for (GLuint sid : p->attachedShaders) {
         mithril::Shader* s = mithril::state_get_shader(sid);
         if (!s) continue;
         if (!s->compiled || s->msl.empty()) { missing = true; continue; }
-        if (s->type == GL_VERTEX_SHADER)          p->vertexMSL   = s->msl;
-        else if (s->type == GL_FRAGMENT_SHADER)   p->fragmentMSL = s->msl;
+        if (s->type == GL_VERTEX_SHADER) {
+            if (has_attrib_bindings) {
+                // Re-translate with bindings (cache key includes bindings, so
+                // a different binding set produces fresh MSL).
+                std::string msl, info;
+                if (mithril::shader_translate(s->type, s->source, msl, info, &p->attribBindings)) {
+                    p->vertexMSL = std::move(msl);
+                } else {
+                    // Fall back to the auto-mapped MSL from glCompileShader.
+                    MITHRIL_LOG_ERROR("program", "Re-translation with attrib bindings "
+                                      "failed for program %u: %s (using auto-mapped MSL)",
+                                      program, info.c_str());
+                    p->vertexMSL = s->msl;
+                }
+            } else {
+                p->vertexMSL = s->msl;
+            }
+        } else if (s->type == GL_FRAGMENT_SHADER) {
+            p->fragmentMSL = s->msl;
+        }
     }
     if (missing || (p->vertexMSL.empty() && p->fragmentMSL.empty())) {
         p->linked = false;

@@ -17,7 +17,7 @@
  * missing from our minimal glcorearb.h.
  */
 #ifndef GL_PROXY_TEXTURE_2D
-#define GL_PROXY_TEXTURE_2D          0x8063
+#define GL_PROXY_TEXTURE_2D          0x8064
 #endif
 #ifndef GL_TEXTURE_WIDTH
 #define GL_TEXTURE_WIDTH             0x1000
