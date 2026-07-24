@@ -364,6 +364,20 @@ void* metal_get_or_create_pipeline(GLuint program,
                           program, err.localizedDescription.UTF8String ?: "unknown");
         return nullptr;
     }
+    if (!state) {
+        MITHRIL_LOG_ERROR("metal_pipeline", "Pipeline creation returned nil (program %u, no error)",
+                          program);
+        return nullptr;
+    }
+    static int s_pipeline_count = 0;
+    s_pipeline_count++;
+    if (s_pipeline_count <= 10) {
+        MITHRIL_LOG_INFO("metal_pipeline", "Pipeline #%d created OK (program %u, vertFn=%d fragFn=%d colorCount=%d depthFmt=%d)",
+                         s_pipeline_count, program,
+                         pd.vertexFunction != nil ? 1 : 0,
+                         pd.fragmentFunction != nil ? 1 : 0,
+                         color_count, depth_format);
+    }
     g_pipelines()[sig] = state;
     return (__bridge void*)state;
 }

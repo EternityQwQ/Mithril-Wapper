@@ -13,12 +13,20 @@
 
 extern "C" {
 
+static int g_draw_count = 0;
+
 static void prepare_draw(GLenum mode) {
     (void)mode;
 
     // Resolve current program + its MSL.
     mithril::Program* prog = mithril::state_get_program(g_state->currentProgram);
-    if (!prog || !prog->linked) return;
+    if (!prog || !prog->linked) {
+        if (g_draw_count < 5) {
+            MITHRIL_LOG_WARN("drawing", "prepare_draw: no program or not linked (prog=%p linked=%d)",
+                             prog, prog ? prog->linked : 0);
+        }
+        return;
+    }
 
     // Resolve current draw FBO attachments (color + depth textures + size).
     void* colors[8] = {nullptr};
@@ -101,7 +109,22 @@ static void prepare_draw(GLenum mode) {
         g_state->blendSrcRGB,
         g_state->blendDstRGB,
         mode);
-    if (!pipeline) return;
+    if (!pipeline) {
+        if (g_draw_count < 10) {
+            MITHRIL_LOG_ERROR("drawing", "prepare_draw: pipeline creation FAILED for program %u (mode=%d, color_count=%d, depth_fmt=%d, attrib_count=%d)",
+                              prog->id, (int)mode, color_count, depth_format, attrib_count);
+        }
+        return;
+    }
+
+    // Log first few draw calls for debugging
+    if (g_draw_count < 5) {
+        MITHRIL_LOG_INFO("drawing", "prepare_draw #%d: prog=%u mode=%d color_count=%d fbo=%u viewport=%dx%d+%d,%d attribs=%d",
+                         g_draw_count, prog->id, (int)mode, color_count, g_state->currentDrawFBO,
+                         g_state->viewportW, g_state->viewportH, g_state->viewportX, g_state->viewportY,
+                         attrib_count);
+    }
+    g_draw_count++;
 
     // Begin render pass (Load action preserves previous contents).
     metal_set_load_load();

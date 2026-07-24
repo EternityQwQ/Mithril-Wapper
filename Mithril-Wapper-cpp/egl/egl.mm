@@ -696,11 +696,20 @@ EGLBoolean eglQueryContext(EGLDisplay dpy, EGLContext ctx,
 }
 
 // ---- Swap ----
+static int g_swap_count = 0;
 EGLBoolean eglSwapBuffers(EGLDisplay dpy, EGLSurface surface) {
     clear_error();
     if (!valid_display(dpy)) { set_error(EGL_BAD_DISPLAY); return EGL_FALSE; }
     EglSurface* s = (EglSurface*)surface;
     if (!s) { set_error(EGL_BAD_SURFACE); return EGL_FALSE; }
+
+    if (g_swap_count < 10) {
+        MITHRIL_LOG_INFO("egl", "eglSwapBuffers #%d: has_drawable=%d has_colorTex=%d layer_size=%.0fx%.0f",
+                         g_swap_count, s->drawable ? 1 : 0, s->colorTex ? 1 : 0,
+                         s->layer ? s->layer.drawableSize.width : 0,
+                         s->layer ? s->layer.drawableSize.height : 0);
+        g_swap_count++;
+    }
 
     // Flush any pending Metal work into the current drawable's texture.
     // metal_commit_and_present() ends the active render pass, registers a
@@ -714,6 +723,7 @@ EGLBoolean eglSwapBuffers(EGLDisplay dpy, EGLSurface surface) {
         s->drawable = nil;
         s->colorTex = nil;
     } else {
+        MITHRIL_LOG_WARN("egl", "eglSwapBuffers: no drawable! metal_commit only");
         metal_commit();
     }
 
@@ -721,7 +731,7 @@ EGLBoolean eglSwapBuffers(EGLDisplay dpy, EGLSurface surface) {
     // the next frame's GL commands render into a fresh texture.
     if (s->layer) {
         if (!acquire_next_drawable(s)) {
-            NSLog(@"[egl] eglSwapBuffers: nextDrawable returned nil (deferred)");
+            MITHRIL_LOG_WARN("egl", "eglSwapBuffers: nextDrawable returned nil (deferred)");
         }
         if (t_currentDraw == s) {
             install_surface_on_state(s);

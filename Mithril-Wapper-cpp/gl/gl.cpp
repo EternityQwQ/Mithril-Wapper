@@ -31,6 +31,7 @@ void glClearStencil(GLint s) {
     metal_set_clear_stencil(s);
 }
 
+static int g_clear_count = 0;
 void glClear(GLbitfield mask) {
     MITHRIL_ENSURE_INIT();
     // Resolve current draw framebuffer attachments.
@@ -38,6 +39,12 @@ void glClear(GLbitfield mask) {
     void* depth = nullptr;
     int w = 0, h = 0;
     int n = mithril::collect_draw_fbo_attachments(colors, &depth, &w, &h);
+
+    if (g_clear_count < 5) {
+        MITHRIL_LOG_INFO("gl", "glClear #%d: mask=0x%x fbo=%u color_count=%d has_depth=%d size=%dx%d",
+                         g_clear_count, mask, g_state->currentDrawFBO, n, depth ? 1 : 0, w, h);
+        g_clear_count++;
+    }
 
     // Set per-attachment load actions based on the GL clear mask so that only
     // the requested buffers (color/depth/stencil) are cleared; others are
