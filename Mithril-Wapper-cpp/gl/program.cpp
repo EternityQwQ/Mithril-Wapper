@@ -196,6 +196,8 @@ void glLinkProgram(GLuint program) {
             }
         }
     }
+    p->linked = true;
+    p->infoLog.clear();
     MITHRIL_LOG_INFO("program", "Linked program %u: reflected %zu uniforms (VS=%zu bytes, FS=%zu bytes)",
                      program, p->uniforms.size(), p->vertexMSL.size(), p->fragmentMSL.size());
 }
