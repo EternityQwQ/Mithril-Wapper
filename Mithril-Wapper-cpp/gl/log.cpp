@@ -9,7 +9,7 @@
 namespace mithril {
 
 namespace {
-LogLevel g_level = LogLevel::Warning;
+LogLevel g_level = LogLevel::Info;
 
 const char* level_str(LogLevel l) {
     switch (l) {
@@ -39,16 +39,22 @@ void log_write(LogLevel level, const char* tag, const char* fmt, ...) {
     std::tm tm{};
     localtime_r(&ts.tv_sec, &tm);
 
-    std::fprintf(stderr, "[mithril %s %02d:%02d:%02d.%03ld %s] ",
+    // Output to stdout (captured by PojavLauncher/Amethyst latestlog.txt)
+    // and stderr simultaneously so logs appear in Minecraft's log file.
+    char prefix[128];
+    std::snprintf(prefix, sizeof(prefix), "[mithril %s %02d:%02d:%02d.%03ld %s] ",
                  level_str(level), tm.tm_hour, tm.tm_min, tm.tm_sec,
                  ts.tv_nsec / 1000000, tag ? tag : "");
 
+    char body[2048];
     va_list ap;
     va_start(ap, fmt);
-    std::vfprintf(stderr, fmt, ap);
+    std::vsnprintf(body, sizeof(body), fmt, ap);
     va_end(ap);
 
-    std::fputc('\n', stderr);
+    std::fprintf(stdout, "%s%s\n", prefix, body);
+    std::fflush(stdout);
+    std::fprintf(stderr, "%s%s\n", prefix, body);
 }
 
 // Initialise level from environment on first use.
