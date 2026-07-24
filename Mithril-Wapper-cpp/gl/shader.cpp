@@ -235,6 +235,11 @@ bool spirv_to_msl(const std::vector<uint32_t>& spirv, std::string& out, std::str
     // 2.3. iOS 14 is the deployment floor, so MSL 2.3 is always available.
     spvc_compiler_options_set_uint(opts, SPVC_COMPILER_OPTION_MSL_VERSION,
                                    SPVC_MAKE_MSL_VERSION(2, 3, 0));
+    // Fix up the depth convention: OpenGL uses NDC Z in [-1, 1] while Metal
+    // uses [0, 1]. Without this, SPIRV-Cross passes gl_Position.z through
+    // unchanged, so all vertices with Z < 0 (half of the scene) get clipped
+    // by Metal's near plane → black screen.
+    spvc_compiler_options_set_uint(opts, SPVC_COMPILER_OPTION_FIXUP_DEPTH_CONVENTION, 1);
     // NOTE: SPVC_COMPILER_OPTION_MSL_UNIFORM_BUFFER_BASE is not available in
     // this version of SPIRV-Cross. The MSL backend assigns buffer indices to
     // standalone uniforms using its default strategy. drawing.cpp reflects
@@ -415,6 +420,8 @@ bool spirv_to_msl_and_reflect(const std::vector<uint32_t>& spirv, std::string& o
     spvc_compiler_create_compiler_options(compiler, &opts);
     spvc_compiler_options_set_uint(opts, SPVC_COMPILER_OPTION_MSL_VERSION,
                                    SPVC_MAKE_MSL_VERSION(2, 3, 0));
+    // Fix up the depth convention: OpenGL NDC Z [-1,1] → Metal [0,1].
+    spvc_compiler_options_set_uint(opts, SPVC_COMPILER_OPTION_FIXUP_DEPTH_CONVENTION, 1);
     // NOTE: SPVC_COMPILER_OPTION_MSL_UNIFORM_BUFFER_BASE does not exist in this
     // version of SPIRV-Cross (it was renamed/removed). The MSL backend assigns
     // buffer indices to standalone uniforms using its default strategy. We
