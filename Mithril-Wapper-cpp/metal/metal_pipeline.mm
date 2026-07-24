@@ -220,7 +220,11 @@ void* metal_get_or_create_pipeline(GLuint program,
                 NSString* vecSize  = [mslStr substringWithRange:[m rangeAtIndex:2]];
                 NSUInteger idx = (NSUInteger)[[mslStr substringWithRange:[m rangeAtIndex:3]] integerValue];
                 if (idx >= 16) return;
-                if (vd.attributes[idx].format != MTLVertexFormatInvalid) return; // VAO set it
+                // Always use the shader-declared type, even if the VAO already
+                // set this index. OpenGL allows float→int conversion at the
+                // GPU level, but Metal rejects type mismatches ("Cannot
+                // convert attribute from FloatN to intN"). The shader's type
+                // is authoritative.
 
                 // Map MSL type -> MTLVertexFormat
                 MTLVertexFormat fmt = MTLVertexFormatInvalid;
