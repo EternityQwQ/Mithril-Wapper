@@ -34,6 +34,9 @@ struct MetalVertexAttrib {
  *   attribs / attrib_count    : enabled vertex attributes
  *   color_formats / color_count: MTLPixelFormat values for color attachments
  *   depth_format               : MTLPixelFormat for depth (0 = none)
+ *   blend_enabled              : 0/1 — enable alpha blending on color attachment 0
+ *   blend_src / blend_dst      : GL blend factor enums (GL_SRC_ALPHA, etc.)
+ *   gl_primitive_mode          : GL primitive mode (not used for pipeline, only cache key)
  *
  * Returns id<MTLRenderPipelineState> (cached) or NULL on failure.
  */
@@ -45,6 +48,9 @@ void* metal_get_or_create_pipeline(GLuint program,
                                    const int* color_formats,
                                    int color_count,
                                    int depth_format,
+                                   int blend_enabled,
+                                   GLenum blend_src,
+                                   GLenum blend_dst,
                                    GLenum gl_primitive_mode);
 
 /* Release all Metal resources owned by a program (libs + cached pipelines). */

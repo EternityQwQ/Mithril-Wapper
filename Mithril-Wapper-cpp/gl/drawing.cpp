@@ -87,14 +87,20 @@ static void prepare_draw(GLenum mode) {
         m.buffer_name  = a.boundBuffer;
     }
 
-    // Get-or-create the render pipeline state.
+    // Get-or-create the render pipeline state. Blend state is part of the
+    // pipeline signature so that enabling/disabling GL_BLEND or changing
+    // blend functions creates a distinct pipeline.
     void* pipeline = metal_get_or_create_pipeline(
         prog->id,
         prog->vertexMSL.c_str(),
         prog->fragmentMSL.c_str(),
         attribs, attrib_count,
         color_formats, color_count,
-        depth_format, mode);
+        depth_format,
+        g_state->blend ? 1 : 0,
+        g_state->blendSrcRGB,
+        g_state->blendDstRGB,
+        mode);
     if (!pipeline) return;
 
     // Begin render pass (Load action preserves previous contents).

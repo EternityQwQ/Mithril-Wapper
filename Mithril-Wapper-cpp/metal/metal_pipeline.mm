@@ -21,6 +21,27 @@ static NSMutableDictionary<NSString*, id<MTLRenderPipelineState>>* g_pipelines()
     static NSMutableDictionary* d = [NSMutableDictionary new]; return d;
 }
 
+static MTLBlendFactor mtl_blend_factor(GLenum gl) {
+    switch (gl) {
+        case GL_ZERO:                return MTLBlendFactorZero;
+        case GL_ONE:                 return MTLBlendFactorOne;
+        case GL_SRC_COLOR:           return MTLBlendFactorSourceColor;
+        case GL_ONE_MINUS_SRC_COLOR: return MTLBlendFactorOneMinusSourceColor;
+        case GL_DST_COLOR:           return MTLBlendFactorDestinationColor;
+        case GL_ONE_MINUS_DST_COLOR: return MTLBlendFactorOneMinusDestinationColor;
+        case GL_SRC_ALPHA:           return MTLBlendFactorSourceAlpha;
+        case GL_ONE_MINUS_SRC_ALPHA: return MTLBlendFactorOneMinusSourceAlpha;
+        case GL_DST_ALPHA:           return MTLBlendFactorDestinationAlpha;
+        case GL_ONE_MINUS_DST_ALPHA: return MTLBlendFactorOneMinusDestinationAlpha;
+        case GL_CONSTANT_COLOR:      return MTLBlendFactorBlendColor;
+        case GL_ONE_MINUS_CONSTANT_COLOR: return MTLBlendFactorOneMinusBlendColor;
+        case GL_CONSTANT_ALPHA:      return MTLBlendFactorBlendAlpha;
+        case GL_ONE_MINUS_CONSTANT_ALPHA: return MTLBlendFactorOneMinusBlendAlpha;
+        case GL_SRC_ALPHA_SATURATE:  return MTLBlendFactorSourceAlphaSaturated;
+        default:                     return MTLBlendFactorOne;
+    }
+}
+
 static MTLVertexFormat gl_vertex_format(GLenum type, int size, int normalized, int integer) {
     if (integer) {
         switch (type) {
@@ -117,9 +138,11 @@ static id<MTLLibrary> compile_msl_lib(id<MTLDevice> dev, const char* src, NSStri
 
 static NSString* signature(GLuint program, const struct MetalVertexAttrib* attribs, int attrib_count,
                            const int* color_formats, int color_count, int depth_format,
+                           int blend_enabled, GLenum blend_src, GLenum blend_dst,
                            GLenum gl_primitive_mode) {
     std::ostringstream s;
-    s << program << ":" << (int)gl_primitive_mode << ":" << depth_format << ":";
+    s << program << ":" << (int)gl_primitive_mode << ":" << depth_format << ":"
+      << blend_enabled << ":" << (int)blend_src << ":" << (int)blend_dst << ":";
     for (int i = 0; i < attrib_count; ++i) {
         if (!attribs[i].enabled) continue;
         s << attribs[i].location << "," << attribs[i].type << "," << attribs[i].size << ","
@@ -142,12 +165,16 @@ void* metal_get_or_create_pipeline(GLuint program,
                                    const int* color_formats,
                                    int color_count,
                                    int depth_format,
+                                   int blend_enabled,
+                                   GLenum blend_src,
+                                   GLenum blend_dst,
                                    GLenum gl_primitive_mode) {
     id<MTLDevice> dev = (__bridge id<MTLDevice>)metal_device();
     if (!dev) return nullptr;
 
     NSString* sig = signature(program, attribs, attrib_count, color_formats,
-                              color_count, depth_format, gl_primitive_mode);
+                              color_count, depth_format, blend_enabled,
+                              blend_src, blend_dst, gl_primitive_mode);
     id<MTLRenderPipelineState> cached = g_pipelines()[sig];
     if (cached) return (__bridge void*)cached;
 
@@ -295,7 +322,17 @@ void* metal_get_or_create_pipeline(GLuint program,
     for (int i = 0; i < color_count && i < 8; ++i) {
         if (color_formats[i] == 0) continue;
         pd.colorAttachments[i].pixelFormat = (MTLPixelFormat)color_formats[i];
-        pd.colorAttachments[i].blendingEnabled = NO; // blending toggled at encode time
+        if (blend_enabled) {
+            pd.colorAttachments[i].blendingEnabled = YES;
+            pd.colorAttachments[i].sourceRGBBlendFactor        = mtl_blend_factor(blend_src);
+            pd.colorAttachments[i].destinationRGBBlendFactor   = mtl_blend_factor(blend_dst);
+            pd.colorAttachments[i].sourceAlphaBlendFactor      = mtl_blend_factor(blend_src);
+            pd.colorAttachments[i].destinationAlphaBlendFactor = mtl_blend_factor(blend_dst);
+            pd.colorAttachments[i].rgbBlendOperation   = MTLBlendOperationAdd;
+            pd.colorAttachments[i].alphaBlendOperation = MTLBlendOperationAdd;
+        } else {
+            pd.colorAttachments[i].blendingEnabled = NO;
+        }
     }
     // Only set depth attachment if the format is actually a depth-renderable
     // MTLPixelFormat. Setting a non-depth format (e.g. RGBA8Unorm) triggers:
