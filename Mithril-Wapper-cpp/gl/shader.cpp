@@ -521,8 +521,8 @@ bool spirv_to_msl_and_reflect(const std::vector<uint32_t>& spirv, std::string& o
             out_uniforms.push_back(std::move(ru));
         }
     };
-    collect_for_type((SpvResourcesType)SPVC_RESOURCE_TYPE_GL_PLAIN_UNIFORM);
-    collect_for_type((SpvResourcesType)SPVC_RESOURCE_TYPE_UNIFORM_BUFFER);
+    collect_for_type((spvc_resource_type)SPVC_RESOURCE_TYPE_GL_PLAIN_UNIFORM);
+    collect_for_type((spvc_resource_type)SPVC_RESOURCE_TYPE_UNIFORM_BUFFER);
 
     const char* result = nullptr;
     if (spvc_compiler_compile(compiler, &result) != SPVC_SUCCESS) {
