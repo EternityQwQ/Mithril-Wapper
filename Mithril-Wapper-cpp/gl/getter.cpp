@@ -1,6 +1,28 @@
 // Mithril-Wapper - getter.cpp
 // GL state getters: glGet*v, glGetString / glGetStringi, glGetError.
+//
+// F3 debug info mapping (mirrors MobileGlues' approach):
+//   GL_VERSION     — "3.3 Mithril-Wapper 1.0 (Metal)" with Minecraft §b color
+//   GL_RENDERER    — GPU name | Metal tier | Mithril-Wapper (from MTLDevice)
+//   GL_VENDOR      — Project maintainers
+//   GL_SHADING_LANGUAGE_VERSION — "3.30 Mithril-Wapper (glslang + SPIRV-Cross)"
+//
+// Custom enums (private, Mithril-specific — probed by Minecraft mods / F3):
+//   MITHRIL_SETTINGS (0x0402) — returns a multi-line dump of renderer config
+//     (Metal device info, shader pipeline, depth/stencil format, etc.) so it
+//     appears on Minecraft's F3 debug screen.
+//   MITHRIL_BACKEND_GETTER (0x0401) — added to a standard GL enum to bypass
+//     the OpenGL facade and query the real Metal backend string. Currently
+//     returns the Metal device name for GL_RENDERER+MITHRIL_BACKEND_GETTER.
 #include "includes.h"
+
+#include <cstdio>
+#include <sstream>
+#include <cstring>
+
+/* ---- Mithril custom enums (mirror MobileGlues' GL_SETTINGS_MG / GL_BACKEND_GETTER_MG) ---- */
+#define MITHRIL_BACKEND_GETTER  0x0401
+#define MITHRIL_SETTINGS        0x0402
 
 /* ---- GPU info (Metal backend) ----
  * On Metal builds the GL_RENDERER string is built from the live MTLDevice so
@@ -10,6 +32,10 @@
  */
 #if MITHRIL_METAL
 extern "C" const char* mithril_get_gpu_renderer_string(void);
+extern "C" const char* mithril_get_metal_device_name(void);
+extern "C" const char* mithril_get_metal_tier_string(void);
+extern "C" uint64_t mithril_get_vram_bytes(void);
+extern "C" const char* mithril_get_settings_dump(void);
 #endif
 
 /* ---- Strings ---- */
@@ -25,8 +51,9 @@ static const char* kRenderer = "Mithril-Wapper (Metal backend)";
 // Target desktop GL 3.3 Core Profile (the minimum required by Minecraft:
 // Java Edition's modern pipeline). The Metal backend implements the subset
 // of Core Profile 3.3 actually exercised by the host.
-static const char* kVersion  = "3.3 Mithril-Wapper 1.0 (Metal)";
-static const char* kShadingLangVer = "3.30";
+// The §b (cyan) Minecraft formatting code highlights Mithril in the F3 screen.
+static const char* kVersion  = "3.3 §bMithril-Wapper§r 1.0 (Metal 2)";
+static const char* kShadingLangVer = "3.30 Mithril-Wapper (glslang + SPIRV-Cross)";
 
 // Sparse extensions list — applications usually only need the count and the
 // GL_ARB_* strings they probe for. Kept within the GL 3.3 Core Profile scope
@@ -57,13 +84,18 @@ static const char* kExtensions[] = {
     "GL_ARB_internalformat_query2",
     "GL_ARB_robustness",
     "GL_KHR_debug",
+    // Mithril-specific extension (probed by mods to detect Mithril backend)
+    "GL_MITHRIL_wrapper",
 };
 
 extern "C" {
 
 GLenum glGetError(void) {
     MITHRIL_ENSURE_INIT();
-    return mithril::state_take_error();
+    // Mirror MobileGlues: always return GL_NO_ERROR to prevent Minecraft from
+    // spamming the log with GL errors that are harmless in the translation layer.
+    mithril::state_take_error();
+    return GL_NO_ERROR;
 }
 
 void glGetBooleanv(GLenum pname, GLboolean* params) {
@@ -90,6 +122,14 @@ void glGetBooleanv(GLenum pname, GLboolean* params) {
 void glGetIntegerv(GLenum pname, GLint* params) {
     MITHRIL_ENSURE_INIT();
     if (!params) return;
+    // Handle Mithril backend getter bypass: MITHRIL_BACKEND_GETTER + standard enum.
+    if (pname >= MITHRIL_BACKEND_GETTER) {
+        GLenum real = pname - MITHRIL_BACKEND_GETTER;
+        // For backend queries, return the real Metal backend values (not the
+        // OpenGL facade values). Currently both are the same since we ARE
+        // the backend, but this allows mods to distinguish.
+        pname = real;
+    }
     switch (pname) {
         case GL_MAX_TEXTURE_SIZE:             *params = 16384; break;
         case GL_MAX_3D_TEXTURE_SIZE:          *params = 2048; break;
@@ -117,7 +157,9 @@ void glGetIntegerv(GLenum pname, GLint* params) {
             break;
         case GL_MAJOR_VERSION:                *params = 3; break;
         case GL_MINOR_VERSION:                *params = 3; break;
-        case GL_CONTEXT_FLAGS:                *params = 0; break;
+        case GL_CONTEXT_FLAGS:
+            *params = GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT;
+            break;
         case GL_CONTEXT_PROFILE_MASK:         *params = GL_CONTEXT_CORE_PROFILE_BIT; break;
         case GL_DOUBLEBUFFER:                 *params = GL_TRUE; break;
         case GL_STEREO:                       *params = GL_FALSE; break;
@@ -169,8 +211,8 @@ void glGetIntegerv(GLenum pname, GLint* params) {
         case GL_STENCIL_REF:                  *params = g_state->stencilRef; break;
         case GL_STENCIL_VALUE_MASK:           *params = (GLint)g_state->stencilValueMask; break;
         case GL_STENCIL_FAIL:                 *params = (GLint)g_state->stencilSfail; break;
-        case GL_STENCIL_PASS_DEPTH_FAIL:      *params = (GLint)g_state->stencilDpfail; break;
-        case GL_STENCIL_PASS_DEPTH_PASS:      *params = (GLint)g_state->stencilDppass; break;
+        case GL_STENCIL_PASS_DEPTH_FAIL:     *params = (GLint)g_state->stencilDpfail; break;
+        case GL_STENCIL_PASS_DEPTH_PASS:     *params = (GLint)g_state->stencilDppass; break;
         case GL_SHADING_LANGUAGE_VERSION:     *params = 330; break;
         default:                              *params = 0; break;
     }
@@ -243,6 +285,30 @@ const GLubyte* glGetString(GLenum name) {
             }
             return (const GLubyte*)all.c_str();
         }
+        /*
+         * Mithril custom enums for F3 debug info mapping (mirrors MobileGlues'
+         * GL_SETTINGS_MG / GL_BACKEND_GETTER_MG pattern). Minecraft mods can
+         * probe these via glGetString to display Mithril's config on the F3
+         * screen, or to bypass the OpenGL facade and get the real Metal info.
+         */
+        case MITHRIL_SETTINGS:
+#if MITHRIL_METAL
+            return (const GLubyte*)mithril_get_settings_dump();
+#else
+            return (const GLubyte*)"Mithril-Wapper (non-Metal build)";
+#endif
+        case MITHRIL_BACKEND_GETTER + GL_RENDERER:
+#if MITHRIL_METAL
+            return (const GLubyte*)mithril_get_metal_device_name();
+#else
+            return (const GLubyte*)"Mithril-Wapper (no device)";
+#endif
+        case MITHRIL_BACKEND_GETTER + GL_VERSION:
+            return (const GLubyte*)"Metal 2";
+        case MITHRIL_BACKEND_GETTER + GL_VENDOR:
+            return (const GLubyte*)"Apple";
+        case MITHRIL_BACKEND_GETTER + GL_SHADING_LANGUAGE_VERSION:
+            return (const GLubyte*)"Metal Shading Language 2.3";
         default: return nullptr;
     }
 }

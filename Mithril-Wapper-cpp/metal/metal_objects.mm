@@ -302,4 +302,10 @@ int metal_pixel_format_for_gl(GLenum internal_format) {
     return (int)gl_internal_to_mtl(internal_format);
 }
 
+int metal_texture_pixel_format(void* texture_handle) {
+    if (!texture_handle) return 0;
+    id<MTLTexture> tex = (__bridge id<MTLTexture>)texture_handle;
+    return (int)tex.pixelFormat;
+}
+
 } // extern "C"

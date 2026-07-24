@@ -43,6 +43,14 @@ void* metal_get_or_create_sampler(GLuint name, GLint min_filter, GLint mag_filte
  */
 int metal_pixel_format_for_gl(GLenum internal_format);
 
+/*
+ * Query the actual MTLPixelFormat of a Metal texture handle (as an int).
+ * Used by the drawing path to get the real pixel format of the EGL default
+ * framebuffer's depth attachment (which is a raw MTLTexture, not tracked
+ * in the GL texture table). Returns 0 if the handle is null.
+ */
+int metal_texture_pixel_format(void* texture_handle);
+
 #ifdef __cplusplus
 }
 #endif

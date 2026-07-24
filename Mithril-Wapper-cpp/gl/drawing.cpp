@@ -35,12 +35,27 @@ static void prepare_draw(GLenum mode) {
             mithril::Texture* tex = mithril::state_get_texture(t);
             if (tex) color_formats[i] = metal_pixel_format_for_gl((GLenum)tex->internalFormat);
         }
+    } else {
+        // EGL default framebuffer: query actual MTLTexture pixel formats
+        // from the color attachments (CAMetalLayer drawable is BGRA8Unorm).
+        for (int i = 0; i < color_count; ++i) {
+            if (colors[i]) {
+                color_formats[i] = metal_texture_pixel_format(colors[i]);
+            }
+        }
     }
     // Depth format from the bound depth texture.
+    // For FBO 0 (EGL default framebuffer), the depth texture is a raw
+    // MTLTexture created by the EGL layer (Depth32Float_Stencil8), not tracked
+    // in the GL texture table. We query its pixel format directly from Metal.
+    // For user FBOs, we look up the GL texture's internalFormat.
     int depth_format = 0;
     if (fbo && fbo->depth.texture) {
         mithril::Texture* dt = mithril::state_get_texture(fbo->depth.texture);
         if (dt) depth_format = metal_pixel_format_for_gl((GLenum)dt->internalFormat);
+    } else if (depth_tex) {
+        // EGL default framebuffer: query the actual MTLTexture pixel format.
+        depth_format = metal_texture_pixel_format(depth_tex);
     }
 
     // Build the vertex attribute descriptor array.

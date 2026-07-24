@@ -104,10 +104,13 @@ static id<MTLLibrary> compile_msl_lib(id<MTLDevice> dev, const char* src, NSStri
             // Log a trimmed compile error so shader bugs are visible.
             NSString* msg = err.localizedDescription;
             if (msg.length > 1024) msg = [msg substringToIndex:1024];
-            // (logging omitted to keep this hot path quiet)
+            MITHRIL_LOG_ERROR("metal_pipeline", "MSL compile error (%s, program %u): %s",
+                              kind.UTF8String, program, msg.UTF8String);
         }
         return lib;
     } @catch (NSException* e) {
+        MITHRIL_LOG_ERROR("metal_pipeline", "MSL compile exception (%s, program %u): %s",
+                          kind.UTF8String, program, e.reason.UTF8String ?: "unknown");
         return nil;
     }
 }
@@ -163,6 +166,16 @@ void* metal_get_or_create_pipeline(GLuint program,
     pd.vertexFunction   = vlib ? [vlib newFunctionWithName:@"main0"] : nil;
     pd.fragmentFunction = flib ? [flib newFunctionWithName:@"main0"] : nil;
 
+    // Metal requires a non-nil vertexFunction. If the vertex shader failed to
+    // compile or the main0 function wasn't found, skip pipeline creation
+    // entirely rather than triggering a validation assertion.
+    if (!pd.vertexFunction) {
+        MITHRIL_LOG_ERROR("metal_pipeline", "Cannot create pipeline: vertex function is nil "
+                          "(program %u). Vertex MSL was %s.", program,
+                          vertex_msl && *vertex_msl ? "provided but failed to compile" : "empty");
+        return nullptr;
+    }
+
     // Vertex descriptor: each enabled attribute reads from its own buffer
     // at index == attribute location.
     if (pd.vertexFunction) {
@@ -190,19 +203,34 @@ void* metal_get_or_create_pipeline(GLuint program,
         pd.colorAttachments[i].pixelFormat = (MTLPixelFormat)color_formats[i];
         pd.colorAttachments[i].blendingEnabled = NO; // blending toggled at encode time
     }
+    // Only set depth attachment if the format is actually a depth-renderable
+    // MTLPixelFormat. Setting a non-depth format (e.g. RGBA8Unorm) triggers:
+    //   validateWithDevice: failed assertion `Render Pipeline Descriptor
+    //   Validation - depthAttachmentPixelFormat MTLPixelFormatRGBA8Unorm
+    //   is not depth renderable.'
     if (depth_format) {
-        pd.depthAttachmentPixelFormat = (MTLPixelFormat)depth_format;
-        if (depth_format == MTLPixelFormatDepth32Float_Stencil8 ||
-            depth_format == MTLPixelFormatStencil8) {
-            // MTLPixelFormatDepth24Unorm_Stencil8 is macOS-only; iOS uses
-            // Depth32Float_Stencil8 for GL_DEPTH24_STENCIL8.
-            pd.stencilAttachmentPixelFormat = (MTLPixelFormat)depth_format;
+        MTLPixelFormat mtlDepth = (MTLPixelFormat)depth_format;
+        if (mtlDepth == MTLPixelFormatDepth16Unorm      ||
+            mtlDepth == MTLPixelFormatDepth32Float      ||
+            mtlDepth == MTLPixelFormatDepth32Float_Stencil8) {
+            pd.depthAttachmentPixelFormat = mtlDepth;
+            if (mtlDepth == MTLPixelFormatDepth32Float_Stencil8) {
+                // Depth+stencil packed format: set stencil attachment too.
+                // MTLPixelFormatDepth24Unorm_Stencil8 is macOS-only; iOS uses
+                // Depth32Float_Stencil8 for GL_DEPTH24_STENCIL8.
+                pd.stencilAttachmentPixelFormat = mtlDepth;
+            }
+        } else {
+            MITHRIL_LOG_ERROR("metal_pipeline", "Ignoring non-depth-renderable pixel format %d "
+                              "for depth attachment (program %u).", depth_format, program);
         }
     }
 
     NSError* err = nil;
     id<MTLRenderPipelineState> state = [dev newRenderPipelineStateWithDescriptor:pd error:&err];
     if (err) {
+        MITHRIL_LOG_ERROR("metal_pipeline", "Pipeline creation failed (program %u): %s",
+                          program, err.localizedDescription.UTF8String ?: "unknown");
         return nullptr;
     }
     g_pipelines()[sig] = state;

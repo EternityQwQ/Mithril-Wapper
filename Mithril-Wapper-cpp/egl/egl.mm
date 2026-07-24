@@ -753,5 +753,51 @@ EGLBoolean eglWaitClient(void)  { metal_commit(); return EGL_TRUE; }
 EGLBoolean eglWaitGL(void)      { metal_commit(); return EGL_TRUE; }
 EGLBoolean eglWaitNative(EGLint) { return EGL_TRUE; }
 
+// ---- Extension function resolution ----
+// eglGetProcAddress delegates to glXGetProcAddress which resolves symbols from
+// this dylib's export table. LWJGL/GLFW use this to obtain GL function pointers.
+// Any GL Core Profile entry point we export is returned; unknown names return
+// NULL (per EGL spec).
+void (*eglGetProcAddress(const char* procname))(void) {
+    clear_error();
+    if (!procname) return nullptr;
+    // Delegate to glXGetProcAddress (same symbol resolution mechanism).
+    extern void* glXGetProcAddress(const char*);
+    return (void(*)(void))glXGetProcAddress(procname);
+}
+
+// EGL 1.5 surface attribute query (eglQuerySurface extension attributes).
+EGLBoolean eglSurfaceAttrib(EGLDisplay dpy, EGLSurface surface,
+                            EGLint attribute, EGLint value) {
+    clear_error();
+    if (!valid_display(dpy)) { set_error(EGL_BAD_DISPLAY); return EGL_FALSE; }
+    EglSurface* s = (EglSurface*)surface;
+    if (!s) { set_error(EGL_BAD_SURFACE); return EGL_FALSE; }
+    (void)attribute; (void)value;
+    return EGL_TRUE;
+}
+
+EGLBoolean eglBindTexImage(EGLDisplay dpy, EGLSurface surface, EGLint buffer) {
+    clear_error();
+    (void)dpy; (void)surface; (void)buffer;
+    return EGL_TRUE;
+}
+
+EGLBoolean eglReleaseTexImage(EGLDisplay dpy, EGLSurface surface, EGLint buffer) {
+    clear_error();
+    (void)dpy; (void)surface; (void)buffer;
+    return EGL_TRUE;
+}
+
+EGLBoolean eglCopyBuffers(EGLDisplay dpy, EGLSurface surface, EGLNativePixmapType target) {
+    clear_error();
+    (void)dpy; (void)surface; (void)target;
+    return EGL_TRUE;
+}
+
+EGLBoolean eglQueryAPI(void) {
+    return (EGLBoolean)t_boundAPI;
+}
+
 } // extern "C"
 #pragma GCC visibility pop

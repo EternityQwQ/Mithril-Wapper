@@ -69,7 +69,9 @@ jobs:
                      eglSwapBuffers eglSwapInterval eglBindAPI eglReleaseThread \
                      eglQueryString eglGetError eglGetCurrentContext \
                      eglGetCurrentSurface eglGetCurrentDisplay eglQueryContext \
-                     eglWaitClient eglWaitGL eglWaitNative eglGetPlatformDisplay; do
+                     eglWaitClient eglWaitGL eglWaitNative eglGetPlatformDisplay \
+                     eglGetProcAddress eglSurfaceAttrib eglBindTexImage \
+                     eglReleaseTexImage eglCopyBuffers; do
             if echo "$NM_OUT" | grep -qE " [Tt] _?${sym}$"; then
               echo "OK   $sym"
             else
