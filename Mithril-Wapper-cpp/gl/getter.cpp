@@ -25,7 +25,7 @@ static const char* kRenderer = "Mithril-Wapper (Metal backend)";
 // Target desktop GL 3.3 Core Profile (the minimum required by Minecraft:
 // Java Edition's modern pipeline). The Metal backend implements the subset
 // of Core Profile 3.3 actually exercised by the host.
-static const char* kVersion  = "OpenGL 3.3 Mithril-Wapper 1.0 (Metal)";
+static const char* kVersion  = "3.3 Mithril-Wapper 1.0 (Metal)";
 static const char* kShadingLangVer = "3.30";
 
 // Sparse extensions list — applications usually only need the count and the
