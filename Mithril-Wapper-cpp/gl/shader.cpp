@@ -1,6 +1,8 @@
 // Mithril-Wapper - shader.cpp
 // GLSL (desktop Core Profile) -> SPIR-V -> MSL translation pipeline.
-//   * glslang compiles GLSL to Vulkan SPIR-V
+//   * glslang compiles GLSL to SPIR-V (OpenGL client, not Vulkan — mirrors
+//     MobileGlues' approach so desktop GLSL 150+ shaders like Minecraft's
+//     blit_screen compile without requiring explicit layout(location=N))
 //   * spirv-cross transpiles SPIR-V to Metal Shading Language (MSL backend)
 // Mirrors the MobileGlues pipeline but targets MSL instead of GLSL ES.
 #include "shader.h"
@@ -14,6 +16,7 @@
 #include <cstdint>
 #include <functional>
 #include <mutex>
+#include <regex>
 #include <unordered_map>
 
 namespace mithril {
@@ -40,6 +43,34 @@ EShLanguage to_esh_stage(GLenum gl) {
     }
 }
 
+// Extract the GLSL #version number. Returns -1 if not found.
+int get_glsl_version(const std::string& src) {
+    static std::regex version_pattern(R"(#version\s+(\d{3}))");
+    std::smatch match;
+    if (std::regex_search(src, match, version_pattern)) {
+        return std::stoi(match[1].str());
+    }
+    return -1;
+}
+
+// Ensure the GLSL source has a usable version. If missing, prepend #version 150.
+// If below 140, upgrade to 150 (mirrors MobileGlues' get_or_add_glsl_version).
+int ensure_glsl_version(std::string& src) {
+    int ver = get_glsl_version(src);
+    if (ver == -1) {
+        ver = 150;
+        src.insert(0, "#version 150\n");
+    } else if (ver < 140) {
+        // Force upgrade: replace the #version line.
+        size_t pos = src.find("#version");
+        size_t line_end = src.find('\n', pos);
+        if (line_end == std::string::npos) line_end = src.length();
+        src.replace(pos, line_end - pos, "#version 150 compatibility");
+        ver = 150;
+    }
+    return ver;
+}
+
 // FNV-1a 64-bit hash for cache keying.
 uint64_t fnv1a(const std::string& s) {
     uint64_t h = 1469598103934665603ULL;
@@ -59,24 +90,33 @@ bool glsl_to_spirv(GLenum gl_stage, const std::string& src,
     EShLanguage stage = to_esh_stage(gl_stage);
     if (stage == EShLangCount) { info = "unsupported shader stage"; return false; }
 
+    // Ensure the source has a usable GLSL version (mirrors MobileGlues'
+    // get_or_add_glsl_version). Minecraft's blit_screen uses #version 150,
+    // which is fine for the OpenGL SPIR-V client.
+    std::string source = src;
+    int glsl_version = ensure_glsl_version(source);
+
     glslang::TShader shader(stage);
-    const char* s = src.c_str();
-    int len = (int)src.size();
-    shader.setStringsWithLengths(&s, &len, 1);
-    shader.setEnvInput(glslang::EShSourceGlsl, stage, glslang::EShClientVulkan, 100);
-    shader.setEnvClient(glslang::EShClientVulkan, glslang::EShTargetVulkan_1_0);
-    shader.setEnvTarget(glslang::EShTargetSpv, glslang::EShTargetSpv_1_0);
+    const char* s = source.c_str();
+    shader.setStrings(&s, 1);
 
-    // Use EShMsgSpvRules WITHOUT EShMsgVulkanRules: Vulkan rules require
-    // explicit layout(location=N) on every user-defined in/out variable, but
-    // desktop GLSL 3.30 Core Profile shaders (e.g. Minecraft's blit_screen)
-    // rely on implicit/API-assigned locations. Without VulkanRules, glslang
-    // auto-assigns locations and still emits valid SPIR-V for spirv-cross.
-    const EShMessages messages = static_cast<EShMessages>(
-        EShMsgDefault | EShMsgSpvRules);
+    // Use OpenGL client (not Vulkan) — this is the critical difference from
+    // the previous implementation. With EShClientOpenGL:
+    //   * GLSL 150+ is accepted (Vulkan requires 330+)
+    //   * setAutoMapLocations(true) auto-assigns locations so shaders without
+    //     explicit layout(location=N) compile (fixes the blit_screen error)
+    //   * setPreamble("#undef VULKAN\n") prevents Vulkan-only code paths
+    // Mirrors MobileGlues' glsl_to_spirv() exactly.
+    shader.setEnvInput(glslang::EShSourceGlsl, stage, glslang::EShClientVulkan, glsl_version);
+    shader.setEnvClient(glslang::EShClientOpenGL, glslang::EShTargetOpenGL_450);
+    shader.setEnvTarget(glslang::EShTargetSpv, glslang::EShTargetSpv_1_5);
+    shader.setAutoMapLocations(true);
+    shader.setPreamble("#undef VULKAN\n");
+    shader.setAutoMapBindings(true);
 
-    const int defaultVersion = 330; // desktop core
-    if (!shader.parse(GetDefaultResources(), defaultVersion, false, messages)) {
+    const EShMessages messages = EShMsgDefault;
+
+    if (!shader.parse(GetDefaultResources(), glsl_version, true, messages)) {
         info = shader.getInfoLog();
         info += shader.getInfoDebugLog();
         return false;
@@ -93,9 +133,8 @@ bool glsl_to_spirv(GLenum gl_stage, const std::string& src,
     glslang::TIntermediate* inter = program.getIntermediate(stage);
     if (!inter) { info = "no intermediate after link"; return false; }
 
-    // Pass an explicit SpvOptions pointer to disambiguate from the 4-arg
-    // GlslangToSpv(intermediate, spirv, SpvBuildLogger*, SpvOptions*) overload.
     glslang::SpvOptions spv_opts;
+    spv_opts.disableOptimizer = false;
     glslang::GlslangToSpv(*inter, spirv, &spv_opts);
     if (spirv.empty()) { info = "SPIR-V generation produced no words"; return false; }
     return true;
