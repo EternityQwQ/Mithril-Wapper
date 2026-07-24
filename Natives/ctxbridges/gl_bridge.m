@@ -11,7 +11,19 @@ static EGLDisplay g_EglDisplay;
 static egl_library handle;
 
 void dlsym_EGL() {
-    void* dl_handle = dlopen("@rpath/libtinygl4angle.dylib", RTLD_GLOBAL);
+    // Determine which renderer library to load based on AMETHYST_RENDERER env.
+    // MTL-ANGLE and Mithril both export desktop OpenGL via EGL; MobileGlues
+    // and gl4es export OpenGL ES via EGL. The library name is the renderer.
+    NSString *renderer = NSProcessInfo.processInfo.environment[@"AMETHYST_RENDERER"];
+    if (!renderer || [renderer length] == 0) {
+        renderer = @ RENDERER_NAME_MTL_ANGLE;
+    }
+    NSString *libPath = [NSString stringWithFormat:@"@rpath/%@", renderer];
+    void* dl_handle = dlopen(libPath.UTF8String, RTLD_GLOBAL);
+    if (!dl_handle) {
+        // Fallback: try the legacy hardcoded MTL-ANGLE library name.
+        dl_handle = dlopen("@rpath/libtinygl4angle.dylib", RTLD_GLOBAL);
+    }
     assert(dl_handle);
     handle.eglBindAPI = dlsym(dl_handle, "eglBindAPI");
     handle.eglChooseConfig = dlsym(dl_handle, "eglChooseConfig");
@@ -52,7 +64,10 @@ gl_render_window_t* gl_init_context(gl_render_window_t *share) {
     gl_render_window_t* bundle = calloc(1, sizeof(gl_render_window_t));
 
     NSString *renderer = NSProcessInfo.processInfo.environment[@"AMETHYST_RENDERER"];
-    BOOL angleDesktopGL = [renderer isEqualToString:@ RENDERER_NAME_MTL_ANGLE];
+    // Both MTL-ANGLE and Mithril-Wrapper expose desktop OpenGL 3.3 Core Profile
+    // via EGL_OPENGL_API. MobileGlues and gl4es expose OpenGL ES.
+    BOOL useDesktopGL = [renderer isEqualToString:@ RENDERER_NAME_MTL_ANGLE]
+                      || [renderer isEqualToString:@ RENDERER_NAME_MITHRIL];
 
     const EGLint attribs[] = {
         EGL_RED_SIZE, 8,
@@ -61,7 +76,7 @@ gl_render_window_t* gl_init_context(gl_render_window_t *share) {
         EGL_ALPHA_SIZE, 8,
         EGL_DEPTH_SIZE, 24,
         EGL_SURFACE_TYPE, EGL_WINDOW_BIT|EGL_PBUFFER_BIT,
-        EGL_RENDERABLE_TYPE, angleDesktopGL ? EGL_OPENGL_BIT : EGL_OPENGL_ES3_BIT,
+        EGL_RENDERABLE_TYPE, useDesktopGL ? EGL_OPENGL_BIT : EGL_OPENGL_ES3_BIT,
         EGL_NONE
     };
 
@@ -82,11 +97,11 @@ gl_render_window_t* gl_init_context(gl_render_window_t *share) {
     }
 
     EGLBoolean bindResult;
-    if (angleDesktopGL) {
-        NSDebugLog(@"EGLBridge: Binding to desktop OpenGL");
+    if (useDesktopGL) {
+        NSDebugLog(@"EGLBridge: Binding to desktop OpenGL (renderer: %@)", renderer);
         bindResult = handle.eglBindAPI(EGL_OPENGL_API);
     } else {
-        NSDebugLog(@"EGLBridge: Binding to OpenGL ES");
+        NSDebugLog(@"EGLBridge: Binding to OpenGL ES (renderer: %@)", renderer);
         bindResult = handle.eglBindAPI(EGL_OPENGL_ES_API);
     }
     if (!bindResult) NSDebugLog(@"EGLBridge: bind failed: %p\n", handle.eglGetError());
@@ -98,8 +113,13 @@ gl_render_window_t* gl_init_context(gl_render_window_t *share) {
         return NULL;
     }
 
+    // For desktop OpenGL (MTL-ANGLE / Mithril), request a 3.3 Core Profile
+    // context via EGL_CONTEXT_MAJOR_VERSION=3 + EGL_CONTEXT_MINOR_VERSION=3.
+    // For GLES, request ES 3.
     const EGLint ctx_attribs[] = {
         EGL_CONTEXT_CLIENT_VERSION, 3,
+        EGL_CONTEXT_MINOR_VERSION, useDesktopGL ? 3 : 0,
+        EGL_CONTEXT_OPENGL_PROFILE_MASK, useDesktopGL ? EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT : 0,
         EGL_NONE
     };
     bundle->context = handle.eglCreateContext(g_EglDisplay, bundle->config, share ? share->context : EGL_NO_CONTEXT, ctx_attribs);

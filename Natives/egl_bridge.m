@@ -60,6 +60,12 @@ int pojavInitOpenGL() {
         renderer = @ RENDERER_NAME_MOBILEGLUES;
         setenv("AMETHYST_RENDERER", renderer.UTF8String, 1);
         set_gl_bridge_tbl();
+    } else if ([renderer isEqualToString:@ RENDERER_NAME_MITHRIL]) {
+        // Mithril-Wrapper: OpenGL 3.3 Core Profile -> Metal 2 translation layer.
+        // Uses the same EGL bridge as MobileGlues/MTL-ANGLE (egl* entry points
+        // exported by libmithril.dylib, resolved via dlsym in gl_bridge.m).
+        setenv("AMETHYST_RENDERER", renderer.UTF8String, 1);
+        set_gl_bridge_tbl();
     } else if ([renderer isEqualToString:@ RENDERER_NAME_MTL_ANGLE]) {
         set_gl_bridge_tbl();
     } else if ([renderer hasPrefix:@"libOSMesa"]) {
@@ -77,17 +83,17 @@ int pojavInitOpenGL() {
 void pojavSetWindowHint(int hint, int value) {
     if (hint == GLFW_CLIENT_API) {
         clientAPI = value;
-    } else if (strcmp(getenv("AMETHYST_RENDERER"), "auto")==0 && hint == GLFW_CONTEXT_VERSION_MAJOR) {
+    } else if (getenv("AMETHYST_RENDERER") && strcmp(getenv("AMETHYST_RENDERER"), "auto")==0 && hint == GLFW_CONTEXT_VERSION_MAJOR) {
         switch (value) {
             case 1:
             case 2:
                 setenv("AMETHYST_RENDERER", RENDERER_NAME_GL4ES, 1);
                 JNI_LWJGL_changeRenderer(RENDERER_NAME_GL4ES);
                 break;
-            // case 4: use Zink?
             default:
-                setenv("AMETHYST_RENDERER", RENDERER_NAME_MOBILEGLUES, 1);
-                JNI_LWJGL_changeRenderer(RENDERER_NAME_MOBILEGLUES);
+                // GL 3.3+: prefer Mithril-Wrapper (native Metal 2 translation)
+                setenv("AMETHYST_RENDERER", RENDERER_NAME_MITHRIL, 1);
+                JNI_LWJGL_changeRenderer(RENDERER_NAME_MITHRIL);
                 break;
         }
     }
