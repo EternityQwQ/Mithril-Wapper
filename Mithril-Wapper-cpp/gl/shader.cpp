@@ -239,8 +239,16 @@ bool spirv_to_msl(const std::vector<uint32_t>& spirv, std::string& out, std::str
     // attribute buffers (0..15). SPIRV-Cross assigns sequential buffer indices
     // to each uniform; starting at 30 keeps them clear of vertex descriptor
     // layouts and the zero-buffer fallback (0..15).
+    //
+    // NOTE: SPVC_COMPILER_OPTION_MSL_UNIFORM_BUFFER_BASE was removed in newer
+    // versions of SPIRV-Cross. The MSL backend now manages buffer indices
+    // automatically (defaulting to 30+ for auxiliary buffers), so we no longer
+    // need to set this manually. If a future SPIRV-Cross version reintroduces
+    // this option, it can be re-enabled here.
+#if defined(SPVC_COMPILER_OPTION_MSL_UNIFORM_BUFFER_BASE)
     spvc_compiler_options_set_uint(opts, SPVC_COMPILER_OPTION_MSL_UNIFORM_BUFFER_BASE,
                                    30);
+#endif
     spvc_compiler_install_compiler_options(compiler, opts);
 
     /*
