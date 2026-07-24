@@ -6,7 +6,214 @@
 #include "shader.h"
 
 #include <algorithm>
+#include <regex>
 #include <vector>
+
+/*
+ * Uniform type enums missing from our minimal glcorearb.h. These are standard
+ * OpenGL 3.3 Core Profile values (from GL_ARB_uniform_buffer_object /
+ * GL 2.0+ shader types). Defined here so uniform reflection can return proper
+ * type information via glGetActiveUniform.
+ */
+#ifndef GL_FLOAT_VEC2
+#define GL_FLOAT_VEC2         0x8B50
+#endif
+#ifndef GL_FLOAT_VEC3
+#define GL_FLOAT_VEC3         0x8B51
+#endif
+#ifndef GL_FLOAT_VEC4
+#define GL_FLOAT_VEC4         0x8B52
+#endif
+#ifndef GL_INT_VEC2
+#define GL_INT_VEC2           0x8B53
+#endif
+#ifndef GL_INT_VEC3
+#define GL_INT_VEC3           0x8B54
+#endif
+#ifndef GL_INT_VEC4
+#define GL_INT_VEC4           0x8B55
+#endif
+#ifndef GL_BOOL
+#define GL_BOOL               0x8B56
+#endif
+#ifndef GL_BOOL_VEC2
+#define GL_BOOL_VEC2          0x8B57
+#endif
+#ifndef GL_BOOL_VEC3
+#define GL_BOOL_VEC3          0x8B58
+#endif
+#ifndef GL_BOOL_VEC4
+#define GL_BOOL_VEC4          0x8B59
+#endif
+#ifndef GL_FLOAT_MAT2
+#define GL_FLOAT_MAT2         0x8B5A
+#endif
+#ifndef GL_FLOAT_MAT3
+#define GL_FLOAT_MAT3         0x8B5B
+#endif
+#ifndef GL_FLOAT_MAT4
+#define GL_FLOAT_MAT4         0x8B5C
+#endif
+#ifndef GL_FLOAT_MAT2x3
+#define GL_FLOAT_MAT2x3       0x8B65
+#endif
+#ifndef GL_FLOAT_MAT3x2
+#define GL_FLOAT_MAT3x2       0x8B67
+#endif
+#ifndef GL_FLOAT_MAT2x4
+#define GL_FLOAT_MAT2x4       0x8B66
+#endif
+#ifndef GL_FLOAT_MAT4x2
+#define GL_FLOAT_MAT4x2       0x8B68
+#endif
+#ifndef GL_FLOAT_MAT3x4
+#define GL_FLOAT_MAT3x4       0x8B69
+#endif
+#ifndef GL_FLOAT_MAT4x3
+#define GL_FLOAT_MAT4x3       0x8B6A
+#endif
+#ifndef GL_SAMPLER_2D
+#define GL_SAMPLER_2D         0x8B5E
+#endif
+#ifndef GL_SAMPLER_CUBE
+#define GL_SAMPLER_CUBE       0x8B60
+#endif
+#ifndef GL_SAMPLER_2D_ARRAY
+#define GL_SAMPLER_2D_ARRAY   0x8DC1
+#endif
+#ifndef GL_SAMPLER_3D
+#define GL_SAMPLER_3D         0x8B5F
+#endif
+#ifndef GL_SAMPLER_2D_SHADOW
+#define GL_SAMPLER_2D_SHADOW  0x8B62
+#endif
+#ifndef GL_SAMPLER_CUBE_SHADOW
+#define GL_SAMPLER_CUBE_SHADOW 0x8B63
+#endif
+#ifndef GL_SAMPLER_2D_ARRAY_SHADOW
+#define GL_SAMPLER_2D_ARRAY_SHADOW 0x8DC4
+#endif
+#ifndef GL_INT_SAMPLER_2D
+#define GL_INT_SAMPLER_2D     0x8DCA
+#endif
+#ifndef GL_UNSIGNED_INT_SAMPLER_2D
+#define GL_UNSIGNED_INT_SAMPLER_2D 0x8DD2
+#endif
+#ifndef GL_UNSIGNED_INT_VEC2
+#define GL_UNSIGNED_INT_VEC2  0x8DC6
+#endif
+#ifndef GL_UNSIGNED_INT_VEC3
+#define GL_UNSIGNED_INT_VEC3  0x8DC7
+#endif
+#ifndef GL_UNSIGNED_INT_VEC4
+#define GL_UNSIGNED_INT_VEC4  0x8DC8
+#endif
+
+namespace mithril {
+
+/*
+ * Map a GLSL type keyword to its GLenum equivalent for uniform reflection.
+ * Returns 0 for unknown types (which will still get a location, just no
+ * precise type info — sufficient for Minecraft's PostEffectPass loader that
+ * only checks for uniform existence by name).
+ */
+static GLenum glsl_type_to_enum(const std::string& type) {
+    static const std::unordered_map<std::string, GLenum> map = {
+        {"float",        GL_FLOAT},
+        {"vec2",         GL_FLOAT_VEC2},
+        {"vec3",         GL_FLOAT_VEC3},
+        {"vec4",         GL_FLOAT_VEC4},
+        {"int",          GL_INT},
+        {"ivec2",        GL_INT_VEC2},
+        {"ivec3",        GL_INT_VEC3},
+        {"ivec4",        GL_INT_VEC4},
+        {"uint",         GL_UNSIGNED_INT},
+        {"uvec2",        GL_UNSIGNED_INT_VEC2},
+        {"uvec3",        GL_UNSIGNED_INT_VEC3},
+        {"uvec4",        GL_UNSIGNED_INT_VEC4},
+        {"bool",         GL_BOOL},
+        {"bvec2",        GL_BOOL_VEC2},
+        {"bvec3",        GL_BOOL_VEC3},
+        {"bvec4",        GL_BOOL_VEC4},
+        {"mat2",         GL_FLOAT_MAT2},
+        {"mat3",         GL_FLOAT_MAT3},
+        {"mat4",         GL_FLOAT_MAT4},
+        {"mat2x3",       GL_FLOAT_MAT2x3},
+        {"mat3x2",       GL_FLOAT_MAT3x2},
+        {"mat2x4",       GL_FLOAT_MAT2x4},
+        {"mat4x2",       GL_FLOAT_MAT4x2},
+        {"mat3x4",       GL_FLOAT_MAT3x4},
+        {"mat4x3",       GL_FLOAT_MAT4x3},
+        {"sampler2D",    GL_SAMPLER_2D},
+        {"samplerCube",  GL_SAMPLER_CUBE},
+        {"sampler2DArray", GL_SAMPLER_2D_ARRAY},
+        {"sampler3D",    GL_SAMPLER_3D},
+        {"sampler2DShadow", GL_SAMPLER_2D_SHADOW},
+        {"samplerCubeShadow", GL_SAMPLER_CUBE_SHADOW},
+        {"sampler2DArrayShadow", GL_SAMPLER_2D_ARRAY_SHADOW},
+        {"isampler2D",   GL_INT_SAMPLER_2D},
+        {"usampler2D",   GL_UNSIGNED_INT_SAMPLER_2D},
+    };
+    auto it = map.find(type);
+    return it != map.end() ? it->second : 0;
+}
+
+/*
+ * Extract uniform declarations from GLSL source and populate the program's
+ * uniform table. This is called after a successful link so that
+ * glGetActiveUniform / glGetProgramiv(GL_ACTIVE_UNIFORMS) / glGetUniformLocation
+ * all return correct results.
+ *
+ * Minecraft's PostEffectPass (aku) enumerates active uniforms via
+ * glGetActiveUniform after linking, then checks whether JSON-declared uniforms
+ * like "BlurDir" appear in the list. Without reflection, the uniform table is
+ * empty and every lookup fails with "Uniform 'X' does not exist".
+ *
+ * The regex matches standalone uniform declarations:
+ *   uniform <type> <name>;
+ *   uniform <type> <name>[<size>];
+ * It does NOT match UBO block declarations (layout(std140) uniform Name { ... })
+ * because those have a block name, not a uniform name, and the block members
+ * are handled separately by the UBO path.
+ */
+static void reflect_uniforms_from_source(Program* p, const std::string& src) {
+    if (src.empty()) return;
+
+    // Match:  uniform <type> <name> [<array>];
+    // This also matches inside UBO block declarations (layout(...) uniform
+    // Name { ... }), but we filter those out below by checking whether the
+    // matched "uniform" keyword is preceded by "layout(" on the same line
+    // — UBO block declarations look like "layout(std140) uniform BlurConfig {"
+    // and the block name ("BlurConfig") is followed by "{", not ";", so the
+    // trailing ";" in our pattern already excludes block names. Individual
+    // members inside a UBO block (e.g. "vec2 BlurDir;") don't have the
+    // "uniform" keyword, so they won't match either.
+    static std::regex uniform_re(
+        R"(uniform\s+(\w+)\s+(\w+)\s*(\[[^\]]*\])?\s*;)",
+        std::regex::optimize);
+
+    std::sregex_iterator it(src.begin(), src.end(), uniform_re);
+    std::sregex_iterator end;
+    for (; it != end; ++it) {
+        const std::smatch& m = *it;
+        const std::string& type = m[1].str();
+        const std::string& name = m[2].str();
+
+        // Skip if this uniform was already reflected (e.g. declared in both
+        // VS and FS — they share the same location).
+        if (p->uniforms.find(name) != p->uniforms.end()) continue;
+
+        Uniform u{};
+        u.name = name;
+        u.type = glsl_type_to_enum(type);
+        u.size = 1;
+        u.location = (GLint)p->uniforms.size();
+        p->uniforms[name] = u;
+        p->uniformByLocation[u.location] = name;
+    }
+}
+
+} // namespace mithril
 
 extern "C" {
 
@@ -155,6 +362,24 @@ void glLinkProgram(GLuint program) {
     p->infoLog.clear();
     MITHRIL_LOG_INFO("program", "Linked program %u (VS=%zu bytes, FS=%zu bytes)",
                      program, p->vertexMSL.size(), p->fragmentMSL.size());
+
+    // Reflect active uniforms from the GLSL source of all attached shaders.
+    // Minecraft's PostEffectPass enumerates active uniforms via
+    // glGetActiveUniform after linking and checks whether JSON-declared
+    // uniforms (e.g. "BlurDir") appear in the list. Without this reflection,
+    // the uniform table is empty and every lookup fails with
+    // "Uniform 'X' does not exist", causing post-processing effects
+    // (blur, entity_outline, etc.) to fail to load.
+    for (GLuint sid : p->attachedShaders) {
+        mithril::Shader* s = mithril::state_get_shader(sid);
+        if (s && s->compiled) {
+            mithril::reflect_uniforms_from_source(p, s->source);
+        }
+    }
+    if (!p->uniforms.empty()) {
+        MITHRIL_LOG_DEBUG("program", "Reflected %zu uniforms for program %u",
+                          p->uniforms.size(), program);
+    }
 }
 
 void glUseProgram(GLuint program) {
