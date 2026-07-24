@@ -135,7 +135,25 @@ void* metal_get_or_create_texture(GLuint name, int width, int height, int depth,
     if (!dev || name == 0) return nullptr;
 
     id<MTLTexture> existing = g_textures()[key(name)];
-    if (existing) return (__bridge void*)existing;
+    /*
+     * Re-create the texture if the size or format changed since last creation.
+     * glTexImage2D is allowed to resize/redefine a texture's storage (it is
+     * not glTexSubImage2D). Without this, Minecraft's max-texture-size probe
+     * (which creates progressively larger textures) would keep hitting the
+     * first (small) MTLTexture and fail to upload, causing it to fall back to
+     * GL_MAX_TEXTURE_SIZE = 1024 and then reject the window size.
+     */
+    if (existing) {
+        bool size_changed = (int)existing.width  != MAX(1, width) ||
+                            (int)existing.height != MAX(1, height);
+        bool format_changed = existing.pixelFormat != gl_internal_to_mtl(internal_format);
+        if (size_changed || format_changed) {
+            [g_textures() removeObjectForKey:key(name)];
+            existing = nil;
+        } else {
+            return (__bridge void*)existing;
+        }
+    }
 
     MTLTextureDescriptor* desc = [MTLTextureDescriptor new];
     desc.textureType = gl_target_to_mtl(target, samples);
@@ -196,6 +214,18 @@ void metal_texture_upload(GLuint name, int level, int x, int y, int z,
                           const void* pixels, int unpack_alignment) {
     id<MTLTexture> tex = g_textures()[key(name)];
     if (!tex || !pixels || w <= 0 || h <= 0) return;
+
+    // Bounds check: skip upload if the region exceeds the texture dimensions.
+    // This prevents Metal validation errors when the app uploads to a region
+    // that was valid at glTexImage2D time but the texture hasn't been resized
+    // yet (or the probe created a smaller texture than expected).
+    NSUInteger texW = tex.width;
+    NSUInteger texH = tex.height;
+    if ((NSUInteger)(x + w) > texW || (NSUInteger)(y + h) > texH) {
+        // Region out of bounds — the texture is too small for this upload.
+        // This is a normal occurrence during texture-size probing; just skip.
+        return;
+    }
 
     size_t bpp = src_bytes_per_pixel(format, type);
     if (bpp == 0) return; // unsupported conversion path (skipped for bring-up)
