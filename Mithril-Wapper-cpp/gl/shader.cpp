@@ -170,6 +170,37 @@ bool spirv_to_msl(const std::vector<uint32_t>& spirv, std::string& out, std::str
                                    SPVC_MAKE_MSL_VERSION(2, 3, 0));
     spvc_compiler_install_compiler_options(compiler, opts);
 
+    /*
+     * Register vertex attribute mappings so SPIRV-Cross generates
+     * [[attribute(N)]] qualifiers on the stage_in struct. Without this,
+     * Metal rejects the vertex function with:
+     *   "invalid type 'main0_in' of input declaration with attribute
+     *    'stage_in' in a vertex function"
+     * because the struct fields lack [[attribute(N)]].
+     *
+     * We map each SPIR-V stage_input location to the same Metal attribute
+     * index (location N -> attribute N). This matches our vertex descriptor
+     * layout in metal_pipeline.mm where each attribute's bufferIndex == location.
+     */
+    {
+        spvc_resources resources = nullptr;
+        if (spvc_compiler_create_shader_resources(compiler, &resources) == SPVC_SUCCESS) {
+            const spvc_reflected_resource* list = nullptr;
+            size_t count = 0;
+            if (spvc_resources_get_resource_list_for_type(resources,
+                    SPVC_RESOURCE_TYPE_STAGE_INPUT, &list, &count) == SPVC_SUCCESS) {
+                for (size_t i = 0; i < count; ++i) {
+                    spvc_msl_vertex_attribute attr;
+                    spvc_msl_vertex_attribute_init(&attr);
+                    attr.location = list[i].location;
+                    // format and builtin default to OTHER/Invalid — SPIRV-Cross
+                    // will infer the correct format from the SPIR-V type.
+                    spvc_compiler_msl_add_vertex_attribute(compiler, &attr);
+                }
+            }
+        }
+    }
+
     const char* result = nullptr;
     if (spvc_compiler_compile(compiler, &result) != SPVC_SUCCESS) {
         info = spvc_context_get_last_error_string(ctx) ? spvc_context_get_last_error_string(ctx) : "compile failed";
