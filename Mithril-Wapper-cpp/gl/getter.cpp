@@ -2,11 +2,26 @@
 // GL state getters: glGet*v, glGetString / glGetStringi, glGetError.
 #include "includes.h"
 
+/* ---- GPU info (Metal backend) ----
+ * On Metal builds the GL_RENDERER string is built from the live MTLDevice so
+ * Minecraft's F3 screen and crash reports show real GPU info. The helper is
+ * implemented in getter_gpu.mm (Objective-C++) so it can call MTLDevice
+ * directly. On non-Apple builds a static fallback is used.
+ */
+#if MITHRIL_METAL
+extern "C" const char* mithril_get_gpu_renderer_string(void);
+#endif
+
 /* ---- Strings ---- */
 // Vendor string lists the project developers (mirrors MobileGlues' pattern of
 // putting the maintainer names in GL_VENDOR).
 static const char* kVendor   = "EternityQwQ, yitenchen123";
+#if MITHRIL_METAL
+// GL_RENDERER is built on first query from the live MTLDevice (see above).
+// Falls back to the static string if Metal is unavailable.
+#else
 static const char* kRenderer = "Mithril-Wapper (Metal backend)";
+#endif
 // Target desktop GL 3.3 Core Profile (the minimum required by Minecraft:
 // Java Edition's modern pipeline). The Metal backend implements the subset
 // of Core Profile 3.3 actually exercised by the host.
@@ -209,7 +224,12 @@ const GLubyte* glGetString(GLenum name) {
     MITHRIL_ENSURE_INIT();
     switch (name) {
         case GL_VENDOR:                   return (const GLubyte*)kVendor;
-        case GL_RENDERER:                 return (const GLubyte*)kRenderer;
+        case GL_RENDERER:
+#if MITHRIL_METAL
+            return (const GLubyte*)mithril_get_gpu_renderer_string();
+#else
+            return (const GLubyte*)kRenderer;
+#endif
         case GL_VERSION:                  return (const GLubyte*)kVersion;
         case GL_SHADING_LANGUAGE_VERSION: return (const GLubyte*)kShadingLangVer;
         case GL_EXTENSIONS: {

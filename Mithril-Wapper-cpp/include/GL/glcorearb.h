@@ -513,6 +513,39 @@ extern "C" {
 #define GL_TEXTURE6                     0x84C6
 #define GL_TEXTURE7                     0x84C7
 
+/* KHR_debug — advertised via GL_KHR_debug in the extension string, so the
+ * corresponding entry points must resolve via dlsym. LWJGL probes for
+ * glDebugMessageControl during GLX._init; if it returns NULL the
+ * org.lwjgl.system.Checks.check() guard throws NullPointerException and
+ * crashes Minecraft at startup. These no-op stubs keep the surface alive. */
+#define GL_DEBUG_OUTPUT                 0x92E0
+#define GL_DEBUG_OUTPUT_SYNCHRONOUS     0x8242
+#define GL_DEBUG_NEXT_TRIGGER           0x8243
+#define GL_DEBUG_CALLBACK_FUNCTION      0x8244
+#define GL_DEBUG_CALLBACK_USER_PARAM    0x8245
+#define GL_DEBUG_SOURCE_API             0x8246
+#define GL_DEBUG_SOURCE_WINDOW_SYSTEM   0x8247
+#define GL_DEBUG_SOURCE_SHADER_COMPILER 0x8248
+#define GL_DEBUG_SOURCE_THIRD_PARTY    0x8249
+#define GL_DEBUG_SOURCE_APPLICATION    0x824A
+#define GL_DEBUG_SOURCE_OTHER          0x824B
+#define GL_DEBUG_TYPE_ERROR             0x824C
+#define GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR 0x824D
+#define GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR 0x824E
+#define GL_DEBUG_TYPE_PORTABILITY       0x824F
+#define GL_DEBUG_TYPE_PERFORMANCE        0x8250
+#define GL_DEBUG_TYPE_OTHER             0x8251
+#define GL_DEBUG_TYPE_MARKER            0x8268
+#define GL_DEBUG_TYPE_PUSH_GROUP        0x8269
+#define GL_DEBUG_TYPE_POP_GROUP         0x826A
+#define GL_DEBUG_SEVERITY_HIGH          0x9146
+#define GL_DEBUG_SEVERITY_MEDIUM        0x9147
+#define GL_DEBUG_SEVERITY_LOW           0x9148
+#define GL_DEBUG_SEVERITY_NOTIFICATION  0x826B
+#define GL_MAX_DEBUG_MESSAGE_LENGTH     0x9143
+#define GL_MAX_DEBUG_GROUP_STACK_DEPTH  0x826C
+#define GL_DEBUG_GROUP_STACK_DEPTH      0x826D
+
 /* ----------------------------- API ----------------------------- */
 
 GLAPI void GLAPIENTRY glClear(GLbitfield mask);
@@ -733,6 +766,19 @@ GLAPI void GLAPIENTRY glDeleteSync(GLsync sync);
 GLAPI GLenum GLAPIENTRY glClientWaitSync(GLsync sync, GLbitfield flags, GLuint64 timeout);
 GLAPI void GLAPIENTRY glWaitSync(GLsync sync, GLbitfield flags, GLuint64 timeout);
 GLAPI GLboolean GLAPIENTRY glIsSync(GLsync sync);
+
+/* KHR_debug entry points — no-op stubs, see gl/debug.cpp.
+ * Advertised via GL_KHR_debug so hosts (LWJGL) dlsym them during init. */
+GLAPI void GLAPIENTRY glDebugMessageControl(GLenum source, GLenum type, GLenum severity, GLsizei count, const GLuint* ids, GLboolean enabled);
+GLAPI void GLAPIENTRY glDebugMessageInsert(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* buf);
+GLAPI void GLAPIENTRY glDebugMessageCallback(GLDEBUGPROC callback, const void* userParam);
+GLAPI GLuint GLAPIENTRY glGetDebugMessageLog(GLuint count, GLsizei bufSize, GLenum* sources, GLenum* types, GLuint* ids, GLenum* severities, GLsizei* lengths, GLchar* messageLog);
+GLAPI void GLAPIENTRY glPushDebugGroup(GLenum source, GLuint id, GLsizei length, const GLchar* message);
+GLAPI void GLAPIENTRY glPopDebugGroup(void);
+GLAPI void GLAPIENTRY glObjectLabel(GLenum identifier, GLuint name, GLsizei length, const GLchar* label);
+GLAPI void GLAPIENTRY glGetObjectLabel(GLenum identifier, GLuint name, GLsizei bufSize, GLsizei* length, GLchar* label);
+GLAPI void GLAPIENTRY glObjectPtrLabel(const void* ptr, GLsizei length, const GLchar* label);
+GLAPI void GLAPIENTRY glGetObjectPtrLabel(const void* ptr, GLsizei bufSize, GLsizei* length, GLchar* label);
 
 /* glX (symbol lookup) — implemented in src/glx/lookup.cpp */
 GLAPI void* GLAPIENTRY glXGetProcAddress(const char* name);

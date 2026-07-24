@@ -68,6 +68,7 @@ set(MITHRIL_SOURCES
     Mithril-Wapper-cpp/gl/log.cpp
     Mithril-Wapper-cpp/gl/state.cpp
     Mithril-Wapper-cpp/gl/stubs.cpp
+    Mithril-Wapper-cpp/gl/debug.cpp
     Mithril-Wapper-cpp/gl/gl.cpp
     Mithril-Wapper-cpp/gl/getter.cpp
     Mithril-Wapper-cpp/gl/program.cpp
@@ -90,6 +91,8 @@ if(APPLE)
         # against. Compiled as Objective-C++ so it can talk to CAMetalLayer
         # and MTLDevice directly.
         Mithril-Wapper-cpp/egl/egl.mm
+        # GPU info string builder (queries MTLDevice for GL_RENDERER).
+        Mithril-Wapper-cpp/gl/getter_gpu.mm
     )
 endif()
 
@@ -120,6 +123,7 @@ if(APPLE)
         Mithril-Wapper-cpp/metal/metal_objects.mm
         Mithril-Wapper-cpp/metal/metal_pipeline.mm
         Mithril-Wapper-cpp/egl/egl.mm
+        Mithril-Wapper-cpp/gl/getter_gpu.mm
         PROPERTIES COMPILE_FLAGS "-fobjc-arc"
     )
     target_link_libraries(${PROJECT_NAME} PRIVATE
