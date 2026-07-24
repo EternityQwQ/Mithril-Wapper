@@ -300,7 +300,9 @@ void metal_encoder_set_depth_stencil(int enabled, int write_mask, int compare_fu
     id<MTLDepthStencilState> state = g_depth_states()[key];
     if (!state) {
         MTLDepthStencilDescriptor* d = [MTLDepthStencilDescriptor new];
-        d.depthCompareEnabled = eff_enabled ? YES : NO;
+        // NOTE: depthCompareEnabled does not exist on iOS (macOS only).
+        // On iOS, setting depthCompareFunction to MTLCompareFunctionAlways
+        // effectively disables depth testing (always passes).
         d.depthWriteEnabled = eff_write ? YES : NO;
         if (eff_enabled) {
             d.depthCompareFunction = to_mtl_compare(eff_cmp);
