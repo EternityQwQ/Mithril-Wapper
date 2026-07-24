@@ -17,7 +17,10 @@
 #include <functional>
 #include <mutex>
 #include <regex>
+#include <algorithm>
+#include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace mithril {
 namespace {
@@ -275,17 +278,18 @@ bool spirv_to_msl(const std::vector<uint32_t>& spirv, std::string& out, std::str
     }
 
     /*
-     * Also assign sequential Location decorations to STAGE_OUTPUT resources
+     * Also assign Location decorations to STAGE_OUTPUT resources
      * (vertex-to-fragment varyings). When vertex and fragment shaders are
      * compiled separately, glslang's auto-map may not assign matching
      * locations to corresponding `out`/`in` variables. Without consistent
      * locations, Metal's pipeline validator reports:
      *   "Fragment input(s) `user(locn0)` mismatching vertex shader output
      *    type(s) or not written by vertex shader"
-     * because the vertex output and fragment input land on different
-     * [[user(locn)]] slots. Assigning locations by declaration order on both
-     * stages keeps them aligned (Minecraft's shaders declare varyings in the
-     * same order in both .vsh and .fsh).
+     *
+     * We sort the stage outputs by variable name, then assign sequential
+     * locations. Since both vertex (.vsh `out`) and fragment (.fsh `in`)
+     * use the same variable names, sorting by name guarantees both stages
+     * assign the same location to the same varying.
      */
     {
         spvc_resources resources = nullptr;
@@ -295,13 +299,24 @@ bool spirv_to_msl(const std::vector<uint32_t>& spirv, std::string& out, std::str
             if (spvc_resources_get_resource_list_for_type(resources,
                     SPVC_RESOURCE_TYPE_STAGE_OUTPUT, &list, &count) == SPVC_SUCCESS) {
                 const unsigned SpvDecorationLocation = 30;
-                unsigned next_location = 0;
+                // Collect (name, id) pairs and sort by name so that vertex
+                // outputs and fragment inputs with the same name get the
+                // same location index.
+                std::vector<std::pair<std::string, SpvId>> vars;
+                vars.reserve(count);
                 for (size_t i = 0; i < count; ++i) {
+                    const char* nm = list[i].name ? list[i].name : "";
+                    vars.push_back({nm, list[i].id});
+                }
+                std::sort(vars.begin(), vars.end(),
+                    [](const auto& a, const auto& b) { return a.first < b.first; });
+                unsigned next_location = 0;
+                for (const auto& v : vars) {
                     unsigned existing = spvc_compiler_get_decoration(
-                        compiler, list[i].id, (SpvDecoration)SpvDecorationLocation);
+                        compiler, v.second, (SpvDecoration)SpvDecorationLocation);
                     if (existing == 0) {
                         spvc_compiler_set_decoration(
-                            compiler, list[i].id,
+                            compiler, v.second,
                             (SpvDecoration)SpvDecorationLocation, next_location);
                         next_location++;
                     } else {
