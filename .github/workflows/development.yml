@@ -1,0 +1,230 @@
+name: Development build
+
+on:
+  pull_request:
+    branches-ignore:
+      - 'l10n_main'
+    types: [opened, reopened]
+  push:
+    branches-ignore:
+      - 'l10n_main'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Development build
+    strategy:
+      matrix:
+        include:
+          - platform: 2
+            platform_name: ios
+
+    runs-on: macos-14
+
+    steps:
+      - name: Show available Xcode and select a suitable one
+        run: |
+          set -e
+          echo "Available apps in /Applications (matching Xcode*):"
+          ls /Applications | grep -E "Xcode(.+)?\.app" || true
+          # Prefer Xcode_16, then Xcode_15, then /Applications/Xcode.app
+          if [ -d "/Applications/Xcode_16.app" ]; then
+            echo "Selecting /Applications/Xcode_16.app"
+            sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
+          elif [ -d "/Applications/Xcode_15.app" ]; then
+            echo "Selecting /Applications/Xcode_15.app"
+            sudo xcode-select -s /Applications/Xcode_15.app/Contents/Developer
+          elif [ -d "/Applications/Xcode.app" ]; then
+            echo "Selecting /Applications/Xcode.app"
+            sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          else
+            echo "No preinstalled Xcode found under /Applications that matches the search. Leaving system default."
+          fi
+          xcodebuild -version || true
+          echo "Available simulator runtimes (for debugging):"
+          xcrun simctl list runtimes || true
+
+      - name: Install GNU Make
+        run: |
+          brew update
+          brew install make
+
+      - name: Install Java 8 (Temurin) via Homebrew
+        run: |
+          brew install --cask temurin@8 || true
+
+      - name: Install ldid
+        run: |
+          brew install ldid || true
+
+      - name: Remove work folders
+        run: |
+          echo "before"
+          ls -lah ./
+          rm -rf ./* || true
+          rm -rf ./.??* || true
+          echo "after"
+          ls -lah ./
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Checkout repository submodules
+        run: git submodule update --init --recursive
+
+      - name: Get gl4es latest commit hash
+        id: gl4es-sha
+        run: |
+          echo "sha=$(git ls-remote https://github.com/AngelAuraMC/HolyGL4ES refs/heads/master | grep -io '^\S*')" >> $GITHUB_OUTPUT
+
+      - name: Cache gl4es
+        uses: actions/cache@v4
+        if: false # set to true if you want to enable caching
+        id: gl4es-cache
+        with:
+          path: gl4es/libs
+          key: gl4es-holy-ios-shared-2-${{ steps.gl4es-sha.outputs.sha }}
+
+      - name: Get gl4es
+        if: false && steps.gl4es-cache.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: 'AngleAuraMC/gl4es-114-extra'
+          path: 'gl4es'
+
+      - name: Build gl4es
+        if: false && steps.gl4es-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        run: |
+          cd gl4es
+          git config user.email "github-actions@users.noreply.github.com"
+          git config user.name "github-actions"
+          export PATH=/opt/procursus/bin:$PATH
+          wget https://github.com/leetal/ios-cmake/raw/master/ios.toolchain.cmake
+          cmake -B build -DCMAKE_TOOLCHAIN_FILE=ios.toolchain.cmake -DDEFAULT_ES=2 \
+            -DNOX11=ON -DNOEGL=OFF -DSTATICLIB=OFF -DPLATFORM=OS64 \
+            -DCMAKE_C_FLAGS=-Wno-error=implicit-function-declaration
+          cmake --build build --config RelWithDebInfo --target GL || true
+          cp -R lib/libGL.dylib ../Natives/resources/Frameworks/libgl4es_114.dylib || true
+
+      - name: Push gl4es
+        if: false && github.event_name != 'pull_request' && github.ref_name == 'main' && steps.gl4es-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        run: |
+          git add Natives/resources/Frameworks/libgl4es_114.dylib || true
+          git commit -am "CI: Update gl4es" || true
+          git push || true
+
+      - name: Download MobileGlues prebuilt artifact
+        id: download-mg
+        env:
+          # 优先使用 PAT 以支持跨仓库访问；未配置时回退到默认 GITHUB_TOKEN（仅对公开仓库可能可用）
+          GH_TOKEN: ${{ secrets.MG_DOWNLOAD_TOKEN || github.token }}
+        run: |
+          set -e
+          mkdir -p mobileglues-artifact
+          cd mobileglues-artifact
+
+          # 动态查询 MobileGL-Dev/MobileGlues 最近成功的 workflow run，避免硬编码
+          # run ID（artifact 90 天后会过期，硬编码 ID 注定会失效）。
+          echo "Fetching recent successful workflow runs from MobileGL-Dev/MobileGlues..."
+          RUN_IDS=$(gh run list \
+            --repo MobileGL-Dev/MobileGlues \
+            --status success \
+            --limit 20 \
+            --json databaseId \
+            --jq '.[].databaseId')
+
+          if [ -z "$RUN_IDS" ]; then
+            echo "::error::No successful workflow runs found in MobileGL-Dev/MobileGlues"
+            exit 1
+          fi
+
+          # 逐个尝试，直到找到仍保留 MobileGlues-iOS-dylib artifact 的 run
+          DOWNLOADED=0
+          for ID in $RUN_IDS; do
+            echo "Trying to download 'MobileGlues-iOS-dylib' from run $ID..."
+            if gh run download "$ID" \
+              --repo MobileGL-Dev/MobileGlues \
+              --name MobileGlues-iOS-dylib \
+              --dir . ; then
+              DOWNLOADED=1
+              echo "downloaded_from_run=$ID" >> $GITHUB_OUTPUT
+              break
+            fi
+            echo "Artifact not available in run $ID, trying next..."
+          done
+
+          if [ "$DOWNLOADED" -ne 1 ]; then
+            echo "::error::Failed to download MobileGlues-iOS-dylib from any recent successful run."
+            exit 1
+          fi
+
+          ls -la
+          echo "Artifact downloaded successfully"
+
+      - name: Build for ${{ matrix.platform_name }}
+        env:
+          IPHONEOS_DEPLOYMENT_TARGET: 14.0
+        # 修改点 2: 开启 pipefail 确保错误能被捕获，并使用 tee 将日志同时输出到屏幕和文件
+        run: |
+          set -o pipefail
+          export PATH=/opt/homebrew/bin:$PATH
+          export SLIMMED=0
+          
+          # 初始化日志文件
+          touch build.log
+          
+          if [ "${{ matrix.platform_name }}" == "ios" ]; then
+            # Build ipa and tipa for iOS (Redirect stderr/stdout to build.log)
+            echo "--- Building Standard IPA ---" | tee -a build.log
+            gmake -j$(sysctl -n hw.ncpu) dsym package PLATFORM=${{ matrix.platform }} 2>&1 | tee -a build.log
+            
+            echo "--- Building TrollStore IPA ---" | tee -a build.log
+            gmake -j$(sysctl -n hw.ncpu) dsym package PLATFORM=${{ matrix.platform }} TROLLSTORE_JIT_ENT=1 2>&1 | tee -a build.log
+          
+          elif [ "${{ matrix.platform_name }}" == "tvos" ]; then
+            # Build tipa only for tvOS
+            echo "--- Building tvOS IPA ---" | tee -a build.log
+            gmake -j$(sysctl -n hw.ncpu) dsym package PLATFORM=${{ matrix.platform }} TROLLSTORE_JIT_ENT=1 2>&1 | tee -a build.log
+          
+          else
+            # Build ipa only for everything else
+            echo "--- Building Generic IPA ---" | tee -a build.log
+            gmake -j$(sysctl -n hw.ncpu) dsym package PLATFORM=${{ matrix.platform }} 2>&1 | tee -a build.log
+          fi
+
+      # 修改点 3: 新增步骤，仅在失败时运行，提取 build.log 中的错误信息
+      - name: 🔍 Extract Critical Build Errors
+        if: failure()
+        run: |
+          echo "::group::Critical Errors Found"
+          if [ -f build.log ]; then
+            echo "Searching for errors in build log..."
+            # 搜索 "error:" 或 "undefined symbol" (不区分大小写)，并显示前后 5 行上下文
+            grep -i -E -C 5 "(error:|undefined symbol|ld: symbol\(s\) not found)" build.log || echo "No standard error patterns found. Please check the full log above."
+          else
+            echo "Build log file not found."
+          fi
+          echo "::endgroup::"
+          
+      - name: Upload regular ipa
+        uses: actions/upload-artifact@v4
+        if: success() # 只有成功时才上传
+        with:
+          name: org.angelauramc.amethyst-${{ matrix.platform_name }}.ipa
+          path: artifacts/org.angelauramc.amethyst-*-${{ matrix.platform_name }}.ipa
+
+      - name: Upload regular tipa
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: org.angelauramc.amethyst-${{ matrix.platform_name }}-trollstore.tipa
+          path: artifacts/org.angelauramc.amethyst-*-${{ matrix.platform_name }}-trollstore.tipa
+
+      - name: Upload PojavLauncher.dSYM
+        if: matrix.platform_name == 'ios' && success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AngelAuraAmethyst.dSYM
+          path: artifacts/AngelAuraAmethyst.dSYM
