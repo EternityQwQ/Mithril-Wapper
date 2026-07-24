@@ -497,27 +497,32 @@ bool spirv_to_msl_and_reflect(const std::vector<uint32_t>& spirv, std::string& o
         }
     }
 
-    // First collect the names of standalone uniforms (SPVC_RESOURCE_TYPE_UNIFORM_BUFFER
-    // covers both GLSL uniform blocks AND standalone uniforms in SPIR-V, since
-    // glslang wraps standalone uniforms in an implicit struct). We'll resolve
-    // their Metal buffer indices by parsing the compiled MSL below.
-    {
+    // Collect the names of standalone GLSL uniforms so we can resolve their
+    // Metal buffer indices by parsing the compiled MSL below.
+    //
+    // In SPIRV-Cross, standalone GLSL uniforms (e.g. `uniform mat4 ProjMat;`)
+    // appear under SPVC_RESOURCE_TYPE_GL_PLAIN_UNIFORM (value 15), NOT under
+    // SPVC_RESOURCE_TYPE_UNIFORM_BUFFER (which is for GLSL uniform blocks / UBOs).
+    // Using the wrong resource type caused every standalone uniform to be
+    // missed → glGetUniformLocation returned -1 → MC logged "uniform does not
+    // exist" and rendering broke.
+    auto collect_for_type = [&](spvc_resource_type type_id) {
         spvc_resources resources = nullptr;
-        if (spvc_compiler_create_shader_resources(compiler, &resources) == SPVC_SUCCESS) {
-            const spvc_reflected_resource* list = nullptr;
-            size_t count = 0;
-            if (spvc_resources_get_resource_list_for_type(resources,
-                    SPVC_RESOURCE_TYPE_UNIFORM_BUFFER, &list, &count) == SPVC_SUCCESS) {
-                for (size_t i = 0; i < count; ++i) {
-                    ReflectedUniform ru;
-                    ru.name = list[i].name ? list[i].name : "";
-                    ru.msl_buffer = 0;   // resolved below by parsing MSL
-                    ru.msl_offset = 0;
-                    out_uniforms.push_back(std::move(ru));
-                }
-            }
+        if (spvc_compiler_create_shader_resources(compiler, &resources) != SPVC_SUCCESS) return;
+        const spvc_reflected_resource* list = nullptr;
+        size_t count = 0;
+        if (spvc_resources_get_resource_list_for_type(resources, type_id,
+                &list, &count) != SPVC_SUCCESS) return;
+        for (size_t i = 0; i < count; ++i) {
+            ReflectedUniform ru;
+            ru.name = list[i].name ? list[i].name : "";
+            ru.msl_buffer = 0;   // resolved below by parsing MSL
+            ru.msl_offset = 0;
+            out_uniforms.push_back(std::move(ru));
         }
-    }
+    };
+    collect_for_type((SpvResourcesType)SPVC_RESOURCE_TYPE_GL_PLAIN_UNIFORM);
+    collect_for_type((SpvResourcesType)SPVC_RESOURCE_TYPE_UNIFORM_BUFFER);
 
     const char* result = nullptr;
     if (spvc_compiler_compile(compiler, &result) != SPVC_SUCCESS) {
@@ -530,11 +535,11 @@ bool spirv_to_msl_and_reflect(const std::vector<uint32_t>& spirv, std::string& o
 
     // Parse the compiled MSL to find the real [[buffer(N)]] slot for each
     // reflected uniform name. SPIRV-Cross's MSL backend emits standalone
-    // uniforms as either:
-    //   constant T& name [[buffer(N)]]
-    //   device const T& name [[buffer(N)]]
-    //   T name [[buffer(N)]]           (for push-constant-style)
-    // We match the uniform name followed by [[buffer(N)]] to get the real slot.
+    // uniforms as function parameters or struct members like:
+    //   vertex main0_out main0(
+    //       constant float4x4& ProjMat [[buffer(0)]], ...
+    //   )
+    // We match the uniform name followed (eventually) by [[buffer(N)]].
     // This is more reliable than guessing base + index, since the allocation
     // strategy depends on the SPIRV-Cross version and shader contents.
     {
@@ -548,8 +553,8 @@ bool spirv_to_msl_and_reflect(const std::vector<uint32_t>& spirv, std::string& o
                     escaped += '\\';
                 escaped += c;
             }
-            // Match: <name> ... [[buffer(N)]]  (allowing type decl in between)
-            std::regex re(escaped + "[^\\]]*\\[\\[buffer\\((\\d+)\\)\\]\\]");
+            // Match: <name> ... [[buffer(N)]]  (non-greedy, across newlines)
+            std::regex re(escaped + "[\\s\\S]*?\\[\\[buffer\\((\\d+)\\)\\]\\]");
             std::smatch m;
             if (std::regex_search(msl, m, re) && m.size() >= 2) {
                 ru.msl_buffer = (unsigned)std::stoul(m[1].str());
