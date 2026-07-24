@@ -171,16 +171,18 @@ bool spirv_to_msl(const std::vector<uint32_t>& spirv, std::string& out, std::str
     spvc_compiler_install_compiler_options(compiler, opts);
 
     /*
-     * Register vertex attribute mappings so SPIRV-Cross generates
-     * [[attribute(N)]] qualifiers on the stage_in struct. Without this,
-     * Metal rejects the vertex function with:
-     *   "invalid type 'main0_in' of input declaration with attribute
-     *    'stage_in' in a vertex function"
-     * because the struct fields lack [[attribute(N)]].
+     * Ensure all vertex stage-in variables have a Location decoration.
+     * SPIRV-Cross's MSL backend uses the SPIR-V Location decoration to
+     * generate [[attribute(N)]] qualifiers on the stage_in struct. If
+     * the GLSL source didn't use layout(location=N) and glslang's
+     * auto-map didn't assign locations (which can happen with the OpenGL
+     * client), the stage_in struct members will lack [[attribute(N)]]
+     * and Metal will reject the vertex function.
      *
-     * We map each SPIR-V stage_input location to the same Metal attribute
-     * index (location N -> attribute N). This matches our vertex descriptor
-     * layout in metal_pipeline.mm where each attribute's bufferIndex == location.
+     * We enumerate all STAGE_INPUT resources and assign sequential
+     * locations (0, 1, 2, ...) to any that lack a Location decoration.
+     * This matches the vertex descriptor layout in metal_pipeline.mm
+     * where attribute index == location.
      */
     {
         spvc_resources resources = nullptr;
@@ -189,17 +191,20 @@ bool spirv_to_msl(const std::vector<uint32_t>& spirv, std::string& out, std::str
             size_t count = 0;
             if (spvc_resources_get_resource_list_for_type(resources,
                     SPVC_RESOURCE_TYPE_STAGE_INPUT, &list, &count) == SPVC_SUCCESS) {
-                // SpvDecorationLocation = 30 (from spirv.h, avoids extra include)
                 const unsigned SpvDecorationLocation = 30;
+                unsigned next_location = 0;
                 for (size_t i = 0; i < count; ++i) {
-                    unsigned location = spvc_compiler_get_decoration(
+                    unsigned existing = spvc_compiler_get_decoration(
                         compiler, list[i].id, (SpvDecoration)SpvDecorationLocation);
-                    spvc_msl_vertex_attribute attr;
-                    spvc_msl_vertex_attribute_init(&attr);
-                    attr.location = location;
-                    // format and builtin default to OTHER/Invalid — SPIRV-Cross
-                    // will infer the correct format from the SPIR-V type.
-                    spvc_compiler_msl_add_vertex_attribute(compiler, &attr);
+                    if (existing == 0) {
+                        // No location assigned yet — assign one sequentially.
+                        spvc_compiler_set_decoration(
+                            compiler, list[i].id,
+                            (SpvDecoration)SpvDecorationLocation, next_location);
+                        next_location++;
+                    } else {
+                        next_location = existing + 1;
+                    }
                 }
             }
         }
